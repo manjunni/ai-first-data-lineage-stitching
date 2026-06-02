@@ -1,0 +1,810 @@
+"""
+Data Lineage Stitching Agent — Streamlit UI
+
+Run:  streamlit run src/ui/app.py
+      (set API_BASE_URL env var or enter the URL in the sidebar)
+"""
+from __future__ import annotations
+
+import io
+import json
+import os
+import uuid
+from datetime import datetime
+
+import pandas as pd
+import streamlit as st
+
+from src.ui.api_client import LineageApiClient, ApiError
+from src.ui.components import (
+    status_chip, render_mermaid, render_system_legend,
+    render_workflow_progress, section_header, metric_row,
+    empty_state, confidence_badge, gap_type_badge,
+)
+
+# ---------------------------------------------------------------------------
+# Page config
+# ---------------------------------------------------------------------------
+
+st.set_page_config(
+    page_title="Data Lineage Agent",
+    page_icon="🕸️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ---------------------------------------------------------------------------
+# Session state initialisation
+# ---------------------------------------------------------------------------
+
+_DEFAULTS = {
+    "run_id":     None,
+    "page":       "Dashboard",
+    "api_url":    os.getenv("API_BASE_URL", "http://localhost:8000"),
+    "last_error": None,
+}
+for key, val in _DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
+
+# ---------------------------------------------------------------------------
+# API client (created fresh each run to pick up URL changes)
+# ---------------------------------------------------------------------------
+
+def client() -> LineageApiClient:
+    return LineageApiClient(st.session_state.api_url)
+
+
+def _api_call(fn, *args, **kwargs):
+    """Run an API call and surface errors cleanly."""
+    try:
+        return fn(*args, **kwargs)
+    except ApiError as exc:
+        if exc.status_code == 404:
+            return None
+        st.error(f"API error {exc.status_code}: {exc.detail[:300]}")
+        return None
+    except Exception as exc:
+        st.error(f"Connection error: {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
+def render_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("## 🕸️ Lineage Agent")
+        st.divider()
+
+        # API connection
+        with st.expander("⚙️ API Settings", expanded=False):
+            url = st.text_input("Backend URL", value=st.session_state.api_url,
+                                key="api_url_input")
+            if url != st.session_state.api_url:
+                st.session_state.api_url = url
+                st.rerun()
+            health = _api_call(client().health)
+            if health:
+                st.success("Connected ✓")
+                alation_ready = health.get("catalog_config", {}).get("alation_ready", False)
+                collibra_ready = health.get("catalog_config", {}).get("collibra_ready", False)
+                if alation_ready:
+                    st.caption("✅ Alation configured")
+                else:
+                    st.caption("⚠️ Alation: missing credentials")
+                if collibra_ready:
+                    st.caption("✅ Collibra configured")
+                else:
+                    st.caption("⚠️ Collibra: missing credentials")
+            else:
+                st.error("Cannot reach API")
+
+        st.divider()
+
+        # Navigation
+        pages = [
+            "Dashboard",
+            "New Run",
+            "Lineage Graph",
+            "Gaps & Questions",
+            "Submit Responses",
+            "Confidence",
+            "Publish",
+            "Audit Trail",
+        ]
+        selected = st.radio("Navigation", pages,
+                            index=pages.index(st.session_state.page))
+        if selected != st.session_state.page:
+            st.session_state.page = selected
+            st.rerun()
+
+        # Run selector
+        if st.session_state.run_id:
+            st.divider()
+            st.caption("Active run:")
+            st.code(st.session_state.run_id[:18] + "...", language=None)
+            run = _api_call(client().get_run, st.session_state.run_id)
+            if run:
+                status_chip(run.get("status", "unknown"))
+            if st.button("Clear active run", use_container_width=True):
+                st.session_state.run_id = None
+                st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Page: Dashboard
+# ---------------------------------------------------------------------------
+
+def page_dashboard() -> None:
+    section_header("📊 Dashboard", "All lineage runs")
+
+    col_refresh, col_new, *_ = st.columns([1, 1, 4])
+    if col_refresh.button("🔄 Refresh", use_container_width=True):
+        st.rerun()
+    if col_new.button("➕ New Run", use_container_width=True, type="primary"):
+        st.session_state.page = "New Run"
+        st.rerun()
+
+    runs = _api_call(client().list_runs) or []
+
+    if not runs:
+        empty_state("📭", "No runs yet", "Click 'New Run' to upload artifacts and start.")
+        return
+
+    # Build display table
+    rows = []
+    for r in runs:
+        rows.append({
+            "Run ID":      r["run_id"][:18] + "...",
+            "Status":      r["status"],
+            "Nodes":       r["node_count"],
+            "Edges":       r["edge_count"],
+            "Open Gaps":   r["gaps_open"],
+            "_run_id":     r["run_id"],
+        })
+
+    df = pd.DataFrame(rows)
+    display_df = df.drop(columns=["_run_id"])
+
+    # Colour the status column
+    def highlight_status(val):
+        colours = {
+            "published": "background-color:#e8f5e9",
+            "emails_sent": "background-color:#f3e5f5",
+            "error": "background-color:#ffebee",
+            "publish_failed": "background-color:#ffebee",
+        }
+        return colours.get(val, "")
+
+    st.dataframe(
+        display_df.style.applymap(highlight_status, subset=["Status"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Row-level actions
+    st.subheader("Select a run to work with")
+    run_options = {f"{r['run_id'][:18]}… ({r['status']})": r["run_id"] for r in runs}
+    chosen_label = st.selectbox("Run", list(run_options.keys()), label_visibility="collapsed")
+    chosen_id = run_options[chosen_label]
+
+    action_cols = st.columns(4)
+    if action_cols[0].button("🔍 Open", use_container_width=True, type="primary"):
+        st.session_state.run_id = chosen_id
+        st.session_state.page = "Lineage Graph"
+        st.rerun()
+    if action_cols[1].button("⚠️ View Gaps", use_container_width=True):
+        st.session_state.run_id = chosen_id
+        st.session_state.page = "Gaps & Questions"
+        st.rerun()
+    if action_cols[2].button("📧 Respond", use_container_width=True):
+        st.session_state.run_id = chosen_id
+        st.session_state.page = "Submit Responses"
+        st.rerun()
+    if action_cols[3].button("📤 Publish", use_container_width=True):
+        st.session_state.run_id = chosen_id
+        st.session_state.page = "Publish"
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Page: New Run
+# ---------------------------------------------------------------------------
+
+def page_new_run() -> None:
+    section_header("🚀 New Run", "Upload artifacts to start lineage extraction")
+
+    with st.form("new_run_form"):
+        st.subheader("1. Upload artifacts")
+        uploaded = st.file_uploader(
+            "SQL scripts, Databricks notebooks, DLT pipelines, ADF pipeline JSON",
+            accept_multiple_files=True,
+            type=["sql", "ipynb", "py", "json"],
+        )
+
+        st.subheader("2. Configuration")
+        col_catalog, col_types = st.columns(2)
+        catalog = col_catalog.selectbox(
+            "Target catalog",
+            ["dry_run", "alation", "collibra"],
+            index=0,
+            help="dry_run: serialise payload without publishing. Use alation/collibra once credentials are configured.",
+        )
+        artifact_types_hint = col_types.text_input(
+            "Artifact type hints (optional)",
+            placeholder="sql,notebook,dlt,adf  (one per file, in order)",
+            help="Leave blank for auto-detection. Use this to disambiguate e.g. a .json that is an ADF pipeline.",
+        )
+
+        submitted = st.form_submit_button("▶️ Start Run", type="primary", use_container_width=True)
+
+    if submitted:
+        if not uploaded:
+            st.error("Please upload at least one artifact file.")
+            return
+
+        with st.spinner("Starting run — parsing artifacts and building lineage graph…"):
+            files = [
+                ("files", (f.name, io.BytesIO(f.read()), "application/octet-stream"))
+                for f in uploaded
+            ]
+            result = _api_call(
+                client().start_run,
+                files=files,
+                catalog=catalog,
+                artifact_types=artifact_types_hint,
+            )
+
+        if result:
+            run_id = result["run_id"]
+            st.session_state.run_id = run_id
+            st.success(f"Run started: `{run_id}`")
+            _show_run_result(result)
+        else:
+            st.error("Failed to start run. Check that the API is running.")
+
+
+def _show_run_result(run: dict) -> None:
+    """Show a summary card after starting or refreshing a run."""
+    status = run.get("status", "unknown")
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Nodes", run.get("node_count", 0))
+    col2.metric("Edges", run.get("edge_count", 0))
+    col3.metric("Open Gaps", run.get("gaps_open", 0))
+    col4.metric("Iteration", run.get("iteration", 0))
+
+    render_workflow_progress(status)
+
+    if status == "emails_sent":
+        st.warning(
+            "⏸️ Waiting for SME responses. Questions have been emailed. "
+            "Submit replies via the **Submit Responses** page."
+        )
+        if st.button("➡️ Go to Submit Responses"):
+            st.session_state.page = "Submit Responses"
+            st.rerun()
+    elif status in ("finalized", "visuals_ready", "published"):
+        st.success("✅ Lineage extraction complete!")
+        if st.button("🗺️ View Lineage Graph"):
+            st.session_state.page = "Lineage Graph"
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Page: Lineage Graph
+# ---------------------------------------------------------------------------
+
+def page_lineage_graph() -> None:
+    section_header("🕸️ Lineage Graph", "Visual cross-system lineage map")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    run = _api_call(client().get_run, run_id)
+    if run:
+        render_workflow_progress(run.get("status", ""))
+        metric_row([
+            ("Nodes",      str(run.get("node_count", 0)), None),
+            ("Edges",      str(run.get("edge_count", 0)), None),
+            ("Open Gaps",  str(run.get("gaps_open", 0)),  None),
+            ("Iteration",  str(run.get("iteration", 0)),  None),
+        ])
+
+    st.subheader("System legend")
+    render_system_legend()
+    st.markdown("")
+
+    # Diagram
+    tab_mermaid, tab_dot, tab_nodes, tab_edges = st.tabs([
+        "📊 Mermaid Diagram", "🔵 Graphviz DOT", "🗂️ Nodes Table", "↔️ Edges Table"
+    ])
+
+    with tab_mermaid:
+        visuals = _api_call(client().get_visuals, run_id)
+        if visuals:
+            height = st.slider("Diagram height", 300, 1200, 500, 50, key="mermaid_height")
+            render_mermaid(visuals.get("mermaid", ""), height=height)
+
+            with st.expander("📋 Raw Mermaid source"):
+                st.code(visuals.get("mermaid", ""), language="text")
+        else:
+            empty_state("⌛", "Diagram not yet generated",
+                        "The run must reach the 'visuals_ready' stage.")
+
+    with tab_dot:
+        if visuals:
+            st.code(visuals.get("graphviz", ""), language="dot")
+            st.caption("Copy the DOT source above and paste into https://dreampuf.github.io/GraphvizOnline/")
+        else:
+            empty_state("⌛", "Not yet available")
+
+    with tab_nodes:
+        lineage = _api_call(client().get_lineage, run_id)
+        if lineage and lineage.get("nodes"):
+            df = pd.DataFrame([
+                {
+                    "Name":        n["name"],
+                    "System":      n["system"],
+                    "Full Path":   n["full_path"],
+                    "Owner":       n.get("owner") or "—",
+                    "Description": (n.get("description") or "")[:60],
+                }
+                for n in lineage["nodes"]
+            ])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            empty_state("🗂️", "No nodes yet")
+
+    with tab_edges:
+        if lineage and lineage.get("edges"):
+            df = pd.DataFrame([
+                {
+                    "Source":        _node_name(lineage, e["source_id"]),
+                    "→ Target":      _node_name(lineage, e["target_id"]),
+                    "Transformation":e.get("transformation") or "—",
+                    "Confidence":    f'{e["confidence"]:.0%}',
+                    "Level":         e.get("confidence_level", "—"),
+                    "Boundary":      e.get("system_boundary") or "—",
+                    "SME Approved":  e.get("sme_approved_by") or "—",
+                }
+                for e in lineage["edges"]
+            ])
+
+            def colour_level(val):
+                colours = {"confirmed": "#e3f2fd", "high": "#e8f5e9",
+                           "medium": "#fff8e1", "low": "#ffebee"}
+                return f"background-color:{colours.get(val, '')}"
+
+            st.dataframe(
+                df.style.applymap(colour_level, subset=["Level"]),
+                use_container_width=True, hide_index=True,
+            )
+        else:
+            empty_state("↔️", "No edges yet")
+
+
+def _node_name(lineage: dict, node_id: str) -> str:
+    for n in lineage.get("nodes", []):
+        if n["id"] == node_id:
+            return n["name"]
+    return node_id[:12]
+
+
+# ---------------------------------------------------------------------------
+# Page: Gaps & Questions
+# ---------------------------------------------------------------------------
+
+def page_gaps_and_questions() -> None:
+    section_header("⚠️ Gaps & Questions", "Open lineage gaps and generated SME questions")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    tab_gaps, tab_questions = st.tabs(["🔍 Gaps", "📧 SME Questions"])
+
+    with tab_gaps:
+        col_filter, _ = st.columns([1, 3])
+        gap_filter = col_filter.selectbox(
+            "Show", ["All", "Open only", "Resolved only"], key="gap_filter"
+        )
+        resolved_param = None if gap_filter == "All" else gap_filter == "Resolved only"
+
+        gaps_data = _api_call(client().get_gaps, run_id, resolved=resolved_param)
+        if not gaps_data:
+            return
+
+        metric_row([
+            ("Total Gaps",    str(gaps_data.get("total", 0)),    None),
+            ("Open",          str(gaps_data.get("open", 0)),     None),
+            ("Resolved",      str(gaps_data.get("resolved", 0)), None),
+        ])
+
+        gaps = gaps_data.get("gaps", [])
+        if not gaps:
+            empty_state("✅", "No gaps found", "The lineage graph is complete.")
+            return
+
+        for gap in gaps:
+            icon = "✅" if gap["resolved"] else "⚠️"
+            with st.expander(
+                f"{icon} {gap_type_badge(gap['gap_type'])} — {gap['description'][:80]}",
+                expanded=not gap["resolved"],
+            ):
+                st.markdown(f"**Description:** {gap['description']}")
+                if gap.get("node_id"):
+                    st.caption(f"Node ID: `{gap['node_id']}`")
+                if gap.get("edge_id"):
+                    st.caption(f"Edge ID: `{gap['edge_id']}`")
+                if gap.get("sme_email"):
+                    st.caption(f"📧 Assigned SME: {gap['sme_email']}")
+                st.caption(f"Gap ID: `{gap['id']}`")
+
+    with tab_questions:
+        col_q_filter, _ = st.columns([1, 3])
+        q_filter = col_q_filter.selectbox(
+            "Show", ["All", "Pending only", "Answered only"], key="q_filter"
+        )
+        answered_param = None if q_filter == "All" else q_filter == "Answered only"
+
+        q_data = _api_call(client().get_questions, run_id, answered=answered_param)
+        if not q_data:
+            return
+
+        metric_row([
+            ("Total Questions", str(q_data.get("total", 0)),   None),
+            ("Pending",         str(q_data.get("pending", 0)), None),
+        ])
+
+        questions = q_data.get("questions", [])
+        if not questions:
+            empty_state("📭", "No questions generated yet",
+                        "Questions are generated when gaps are detected.")
+            return
+
+        for q in questions:
+            status_icon = "✅" if q["answered"] else "⏳"
+            label = f"{status_icon} [{q['gap_type']}] {q['question'][:80]}"
+            with st.expander(label, expanded=not q["answered"]):
+                st.markdown(f"**Question:**\n\n> {q['question']}")
+                cols = st.columns(3)
+                cols[0].caption(f"Gap ID: `{q['gap_id']}`")
+                cols[1].caption(f"SME: {q.get('sme_email') or 'not assigned'}")
+                cols[2].caption(f"Send status: {q.get('send_status') or '—'}")
+
+                if not q["answered"]:
+                    # Copy-to-clipboard helper
+                    ref = q["gap_id"]
+                    st.code(f"[REF:{ref}]: <your answer here>", language="text")
+                    st.caption("Include the line above in your email reply.")
+
+
+# ---------------------------------------------------------------------------
+# Page: Submit Responses
+# ---------------------------------------------------------------------------
+
+def page_submit_responses() -> None:
+    section_header("📧 Submit SME Responses",
+                   "Paste email replies to resume the lineage run")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    run = _api_call(client().get_run, run_id)
+    if not run:
+        return
+
+    status = run.get("status", "")
+    if status != "emails_sent":
+        if status in ("finalized", "visuals_ready", "published"):
+            st.success("✅ All gaps resolved — no responses needed.")
+        else:
+            st.info(f"This run is currently in status **{status}**. "
+                    "Responses can only be submitted when status is `emails_sent`.")
+        return
+
+    # Show pending questions as a reference
+    q_data = _api_call(client().get_questions, run_id, answered=False)
+    if q_data and q_data.get("questions"):
+        with st.expander("📋 Questions awaiting answers", expanded=True):
+            for q in q_data["questions"]:
+                st.markdown(f"**{gap_type_badge(q['gap_type'])}**")
+                st.markdown(f"> {q['question']}")
+                st.code(f"[REF:{q['gap_id']}]: <answer>", language="text")
+                st.divider()
+
+    st.subheader("Paste full email reply")
+    st.caption(
+        "Paste the raw email body below. Use `[REF:gap-id]: answer` markers for each question. "
+        "Unstructured replies are also accepted — the AI will try to match them."
+    )
+
+    reply_text = st.text_area(
+        "Email reply body",
+        height=250,
+        placeholder=(
+            "[REF:abc12345-...]: The data comes from ADLS container raw/orders\n"
+            "[REF:def67890-...]: This is a Databricks Delta table in main.silver.orders\n"
+        ),
+        key="reply_text",
+    )
+
+    col_submit, col_clear = st.columns([2, 1])
+    submit = col_submit.button("📨 Submit Responses", type="primary", use_container_width=True)
+    if col_clear.button("🗑️ Clear", use_container_width=True):
+        st.session_state.reply_text = ""
+        st.rerun()
+
+    if submit:
+        if not reply_text.strip():
+            st.error("Please enter a reply before submitting.")
+            return
+
+        # Parse the reply and route to the API
+        from src.sme.email_handler import parse_email_responses
+        raw = [{"from": "analyst@ui", "subject": f"[Lineage Agent] Run {run_id} — reply",
+                "body": reply_text}]
+        parsed = parse_email_responses(raw)
+
+        if not any(p.get("gap_id") for p in parsed):
+            st.warning(
+                "No `[REF:gap-id]` markers found in the reply. "
+                "The AI will still attempt to extract answers, but structured markers are recommended."
+            )
+
+        # Attach run_id to each parsed response
+        for p in parsed:
+            p["run_id"] = run_id
+
+        with st.spinner("Processing responses and updating the lineage graph…"):
+            result = _api_call(client().submit_responses, run_id, parsed)
+
+        if result:
+            st.success("✅ Responses submitted! The run is continuing.")
+            _show_run_result(result)
+        else:
+            st.error("Failed to submit responses.")
+
+
+# ---------------------------------------------------------------------------
+# Page: Confidence
+# ---------------------------------------------------------------------------
+
+def page_confidence() -> None:
+    section_header("📊 Confidence Scores",
+                   "How confident is the extracted lineage?")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    data = _api_call(client().get_confidence, run_id)
+    if not data:
+        empty_state("📊", "Confidence data not yet available",
+                    "The run must be finalized first.")
+        return
+
+    avg = data.get("avg_confidence")
+    metric_row([
+        ("Total Edges",      str(data.get("total_edges", 0)),       None),
+        ("Avg Confidence",   f"{avg:.0%}" if avg else "—",          None),
+        ("SME Confirmed",    str(data.get("sme_confirmed", 0)),      None),
+        ("Cross-system",     str(data.get("cross_system_edges", 0)), None),
+    ])
+
+    st.divider()
+
+    col_chart, col_stats = st.columns([2, 1])
+
+    with col_chart:
+        st.subheader("Edges by confidence level")
+        by_level = data.get("by_level", {})
+        if by_level:
+            chart_data = pd.DataFrame({
+                "Level":  list(by_level.keys()),
+                "Count":  list(by_level.values()),
+            }).set_index("Level")
+            st.bar_chart(chart_data, color="#4472C4")
+
+    with col_stats:
+        st.subheader("Statistics")
+        if avg is not None:
+            st.progress(avg, text=f"Average: {avg:.0%}")
+        st.metric("Min confidence", f"{data.get('min_confidence', 0):.0%}")
+        st.metric("Max confidence", f"{data.get('max_confidence', 0):.0%}")
+        if data.get("unresolved_adf_edges", 0):
+            st.warning(f"⚠️ {data['unresolved_adf_edges']} unresolved ADF dataset references")
+
+    # Confidence level explanations
+    with st.expander("ℹ️ What do confidence levels mean?"):
+        rows = [
+            ("✅ Confirmed",  ">= 95%", "SME has explicitly approved this lineage link"),
+            ("🟢 High",       ">= 85%", "Parsed directly from artifact (SQL AST, Python AST, ADF JSON)"),
+            ("🟡 Medium",     ">= 65%", "Inferred by LLM or parsed via regex"),
+            ("🔴 Low",        "< 65%",  "Uncertain — flagged as a gap for SME review"),
+        ]
+        st.table(pd.DataFrame(rows, columns=["Level", "Threshold", "Meaning"]))
+
+
+# ---------------------------------------------------------------------------
+# Page: Publish
+# ---------------------------------------------------------------------------
+
+def page_publish() -> None:
+    section_header("📤 Publish to Catalog",
+                   "Preview and publish the validated lineage to Alation or Collibra")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    run = _api_call(client().get_run, run_id)
+    if not run:
+        return
+
+    status = run.get("status", "")
+    PUBLISHABLE = {"finalized", "visuals_ready", "published", "publish_failed"}
+
+    if status not in PUBLISHABLE:
+        st.warning(
+            f"Run status is **{status}**. "
+            "Publishing is available after the run is finalized."
+        )
+        render_workflow_progress(status)
+        return
+
+    col_catalog, col_action = st.columns([2, 2])
+    catalog = col_catalog.selectbox(
+        "Target catalog",
+        ["dry_run", "alation", "collibra"],
+        index=["dry_run", "alation", "collibra"].index(
+            run.get("target_catalog", "dry_run")
+        ),
+        key="publish_catalog",
+    )
+
+    # Preview
+    st.subheader("📋 Payload preview")
+    st.caption("See exactly what will be sent to the catalog before committing.")
+
+    if st.button("👁️ Preview payload", use_container_width=False):
+        with st.spinner("Generating preview…"):
+            preview = _api_call(client().publish_preview, run_id, catalog=catalog)
+        if preview:
+            _render_publish_result(preview)
+
+    st.divider()
+
+    # Publish
+    st.subheader("🚀 Publish")
+    if catalog == "dry_run":
+        st.info("**dry_run** — the payload will be serialised and returned but NOT sent to any catalog. Safe to use for testing.")
+    else:
+        health = _api_call(client().health)
+        ready = health and health.get("catalog_config", {}).get(f"{catalog}_ready", False)
+        if not ready:
+            st.error(
+                f"⚠️ {catalog.capitalize()} credentials are not configured. "
+                f"Set `{catalog.upper()}_BASE_URL` and the corresponding API key/password in `.env`."
+            )
+
+    if col_action.button(
+        f"📤 Publish to {catalog}", type="primary", use_container_width=True
+    ):
+        with st.spinner(f"Publishing to {catalog}…"):
+            result = _api_call(client().publish, run_id, catalog=catalog)
+        if result:
+            if result.get("success"):
+                st.success(f"✅ Published successfully to {catalog}!")
+            else:
+                st.error(f"Publish failed: {result.get('errors', [])}")
+            _render_publish_result(result)
+
+
+def _render_publish_result(result: dict) -> None:
+    cols = st.columns(4)
+    cols[0].metric("Status", result.get("status", "—"))
+    cols[1].metric("Nodes", result.get("nodes_published", 0))
+    cols[2].metric("Edges", result.get("edges_published", 0))
+    cols[3].metric("Errors", len(result.get("errors", [])))
+
+    if result.get("errors"):
+        with st.expander("❌ Errors"):
+            for e in result["errors"]:
+                st.error(e)
+
+    if result.get("catalog_urls"):
+        with st.expander("🔗 Catalog links"):
+            for url in result["catalog_urls"]:
+                st.markdown(f"- [{url}]({url})")
+
+    if result.get("payload_summary"):
+        with st.expander("📦 Payload summary"):
+            st.json(result["payload_summary"])
+
+
+# ---------------------------------------------------------------------------
+# Page: Audit Trail
+# ---------------------------------------------------------------------------
+
+def page_audit_trail() -> None:
+    section_header("📜 Audit Trail",
+                   "Full history of every action taken during this run")
+
+    run_id = _require_run()
+    if not run_id:
+        return
+
+    audit = _api_call(client().get_audit, run_id)
+    if not audit:
+        return
+
+    trail = audit.get("audit_trail", [])
+    if not trail:
+        empty_state("📜", "Audit trail is empty")
+        return
+
+    st.caption(f"{len(trail)} audit entries")
+
+    # Reverse so most recent is first
+    for entry in reversed(trail):
+        step = entry.get("step", "unknown")
+        ts = entry.get("ts", "")
+        details = {k: v for k, v in entry.items() if k not in ("step", "ts")}
+
+        with st.expander(f"🔹 **{step}** — {ts[:19]}", expanded=False):
+            if details:
+                st.json(details)
+            else:
+                st.caption("No additional details")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _require_run() -> str | None:
+    """Return the active run_id or show a prompt and return None."""
+    if not st.session_state.run_id:
+        st.info("No active run selected. Choose a run from the **Dashboard** or start a **New Run**.")
+        col1, col2, *_ = st.columns([1, 1, 4])
+        if col1.button("📊 Go to Dashboard"):
+            st.session_state.page = "Dashboard"
+            st.rerun()
+        if col2.button("➕ New Run"):
+            st.session_state.page = "New Run"
+            st.rerun()
+        return None
+    return st.session_state.run_id
+
+
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+
+_PAGES = {
+    "Dashboard":        page_dashboard,
+    "New Run":          page_new_run,
+    "Lineage Graph":    page_lineage_graph,
+    "Gaps & Questions": page_gaps_and_questions,
+    "Submit Responses": page_submit_responses,
+    "Confidence":       page_confidence,
+    "Publish":          page_publish,
+    "Audit Trail":      page_audit_trail,
+}
+
+
+def main() -> None:
+    render_sidebar()
+    page_fn = _PAGES.get(st.session_state.page, page_dashboard)
+    page_fn()
+
+
+if __name__ == "__main__":
+    main()
