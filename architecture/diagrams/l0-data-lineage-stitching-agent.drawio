@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-02T00:00:00.000Z" agent="Claude" version="21.0.0" type="device">
+  <diagram id="l0-lineage-agent" name="L0 — Data Lineage Stitching Agent">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0" background="#FAFBFC">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- TITLE BLOCK                                                 -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <mxCell id="title" value="Data Lineage Stitching Agent" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1A202C;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="16" width="760" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="L0 Architecture  ·  Capgemini Insights &amp; Data  ·  Azure Stack  ·  June 2026" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;fontColor=#64748B;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="50" width="700" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- LEGEND -->
+        <mxCell id="leg-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontStyle=1;fontColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="16" width="80" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-actor" value="Human Actor" style="shape=mxgraph.basic.rect;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E6;strokeColor=#D97706;fontSize=9;fontColor=#1A202C;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="36" width="120" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-comp" value="Platform Component" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#2C5282;fontSize=9;fontColor=#1A202C;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="64" width="120" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-ai" value="AI / LLM Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FF;strokeColor=#6B21A8;fontSize=9;fontColor=#1A202C;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="92" width="120" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-ext" value="External Catalog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#D97706;strokeWidth=1.5;fontSize=9;fontColor=#1A202C;dashed=1;dashPattern=6 3;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="120" width="120" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-flow1" value="─▶  Data / Control Flow" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;fontColor=#059669;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="148" width="140" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-flow2" value="- - ▶  External Interaction" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;fontColor=#94A3B8;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="166" width="140" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-flow3" value="◀─▶  Bidirectional" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;fontColor=#2C5282;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="184" width="140" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ZONE: SOURCE ARTIFACT INPUTS (top)                         -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <mxCell id="zone-sources" value="Source Artifact Inputs" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=1.5;strokeColor=#15803D;fillColor=#F0FDF4;verticalAlign=top;fontSize=11;fontStyle=1;fontColor=#166534;spacingTop=6;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="82" width="1080" height="88" as="geometry" />
+        </mxCell>
+
+        <mxCell id="src-sql" value="SQL Scripts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=11;fontColor=#166534;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="240" y="106" width="140" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="src-nb" value="Databricks Notebooks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=11;fontColor=#166534;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="400" y="106" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="src-dlt" value="Delta Live Tables" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=11;fontColor=#166534;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="580" y="106" width="150" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="src-adf" value="Azure Data Factory JSON" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=11;fontColor=#166534;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="750" y="106" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="src-bi" value="BI Definitions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=11;fontColor=#166534;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="940" y="106" width="140" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ZONE: LINEAGE AGENT PLATFORM (main boundary)               -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <mxCell id="zone-platform" value="Lineage Agent Platform  (Azure Container Apps)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;strokeColor=#0078D4;fillColor=#EFF6FF;verticalAlign=top;fontSize=12;fontStyle=1;fontColor=#1E3A5F;spacingTop=8;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="200" y="192" width="1160" height="726" as="geometry" />
+        </mxCell>
+
+        <!-- ── Presentation Layer ──────────────────────────────────── -->
+        <mxCell id="comp-ui" value="&lt;b style='font-size:13px'&gt;Streamlit Web App&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;Dashboard · Run Management · Lineage Graph Viewer&lt;br&gt;Gap Review · SME Response Form · Publish&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CFFAFE;strokeColor=#0E7490;strokeWidth=2;fontSize=12;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="228" width="280" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ── API Gateway ─────────────────────────────────────────── -->
+        <mxCell id="comp-api" value="&lt;b style='font-size:13px'&gt;Lineage Agent API&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;FastAPI · 14 REST endpoints&lt;br&gt;Run lifecycle · Visuals · Publish&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#2C5282;strokeWidth=2;fontSize=12;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="368" width="280" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="comp-webhook" value="&lt;b style='font-size:12px'&gt;Email Webhook&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;Inbound ACS / SendGrid&lt;br&gt;Auto-routes SME replies&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#2C5282;strokeWidth=1.5;fontSize=12;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="510" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ── Core Engine (LangGraph) ─────────────────────────────── -->
+        <mxCell id="comp-engine" value="&lt;b style='font-size:14px'&gt;Lineage Agent Engine&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;LangGraph Orchestration (11-node stateful graph)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FF;strokeColor=#6B21A8;strokeWidth=2.5;fontSize=12;fontColor=#1A202C;verticalAlign=top;spacingTop=10;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="550" y="228" width="360" height="440" as="geometry" />
+        </mxCell>
+
+        <!-- Engine sub-components -->
+        <mxCell id="eng-parsers" value="Artifact Parsers&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;SQL (sqlglot)  ·  Notebook (regex)&lt;br&gt;DLT (Python ast)  ·  ADF (JSON)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="565" y="298" width="330" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="eng-graph" value="Graph Engine&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Stitcher (dedup · boundary annotation)&lt;br&gt;Gap Detector (7 gap types)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="565" y="386" width="330" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="eng-score" value="Confidence Scoring&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Multi-signal: evidence type · cross-system&lt;br&gt;ADF placeholder · UNKNOWN system penalties&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="565" y="474" width="330" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="eng-viz" value="Visualization&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Mermaid · Graphviz DOT · HTML Summary&lt;br&gt;System-coloured nodes · confidence-styled edges&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="565" y="562" width="330" height="72" as="geometry" />
+        </mxCell>
+
+        <!-- Interrupt badge -->
+        <mxCell id="eng-interrupt" value="⏸ interrupt / resume" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#D97706;strokeWidth=1.5;fontSize=9;fontStyle=2;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="656" y="648" width="148" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- ── SME Email Flow ───────────────────────────────────────── -->
+        <mxCell id="comp-sme-flow" value="&lt;b style='font-size:13px'&gt;SME Email Flow&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;Question Generator (template + LLM)&lt;br&gt;Email Handler (grouped send · [REF] parsing)&lt;br&gt;Response Processor (structured extraction&lt;br&gt;+ per-gap-type graph update)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#C2410C;strokeWidth=2;fontSize=12;fontColor=#1A202C;verticalAlign=top;spacingTop=10;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="960" y="368" width="270" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- ── Catalog Publisher ───────────────────────────────────── -->
+        <mxCell id="comp-pub" value="&lt;b style='font-size:13px'&gt;Catalog Publisher&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#475569'&gt;Alation Integration API v1&lt;br&gt;Collibra REST API v2&lt;br&gt;Dry-Run preview mode&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;strokeWidth=2;fontSize=12;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="960" y="600" width="270" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ── State Store ─────────────────────────────────────────── -->
+        <mxCell id="comp-state" value="Agent State Store&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;LangGraph Checkpointer&lt;br&gt;Azure Cosmos DB (prod)&lt;/span&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#0369A1;strokeWidth=1.5;fontSize=10;fontStyle=1;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="960" y="228" width="200" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ── Azure Services (bottom of platform) ────────────────── -->
+        <mxCell id="comp-openai" value="&lt;b&gt;Azure OpenAI&lt;/b&gt; (GPT-4o)&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Question enrichment · Answer extraction&lt;br&gt;LLM fallback for parsers&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FF;strokeColor=#6B21A8;strokeWidth=2;fontSize=11;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="220" y="720" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="comp-acs" value="&lt;b&gt;Azure Communication Services&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Grouped email send · HTML templates&lt;br&gt;Inbound webhook for replies&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#2C5282;strokeWidth=2;fontSize=11;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="550" y="720" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="comp-acr" value="Azure Container Apps&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;API + Agent runtime&lt;br&gt;Auto-scale on demand&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#0369A1;strokeWidth=1.5;fontSize=11;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="880" y="720" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="comp-adls" value="Azure Data Lake&lt;br&gt;Storage Gen2&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Artifact staging&lt;/span&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#15803D;strokeWidth=1.5;fontSize=10;fontStyle=1;fontColor=#1A202C;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="716" width="160" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- HUMAN ACTORS (left, outside platform)                      -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <mxCell id="actor-analyst" value="Data Governance Analyst" style="shape=mxgraph.basic.rect;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E6;strokeColor=#D97706;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#92400E;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="30" y="258" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-analyst-icon" value="👤" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="30" y="218" width="160" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="actor-sme" value="Subject Matter Expert (SME)" style="shape=mxgraph.basic.rect;rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E6;strokeColor=#D97706;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#92400E;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="30" y="596" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-sme-icon" value="👤" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="30" y="556" width="160" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- CATALOG TARGETS (right, outside platform)                  -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <mxCell id="zone-catalogs" value="Data Catalog Targets" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=1.5;strokeColor=#D97706;fillColor=#FEFCE8;verticalAlign=top;fontSize=11;fontStyle=1;fontColor=#78350F;spacingTop=6;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="1406" y="476" width="220" height="222" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cat-alation" value="&lt;b&gt;Alation&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;Integration API v1&lt;br&gt;Lineage dataflows&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#D97706;strokeWidth=2;fontSize=11;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="500" width="190" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cat-collibra" value="&lt;b&gt;Collibra&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#475569'&gt;REST API v2&lt;br&gt;Assets + Lineage relations&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#D97706;strokeWidth=2;fontSize=11;fontColor=#1A202C;verticalAlign=middle;fontFamily=Inter, Segoe UI, Helvetica, Arial, sans-serif;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="600" width="190" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- CONNECTIONS / DATA FLOWS                                    -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+
+        <!-- Analyst ─▶ Streamlit (uses) -->
+        <mxCell id="e01" value="uses" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.8;fillColor=#059669;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor-analyst" target="comp-ui">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Streamlit ◀─▶ API (REST calls) -->
+        <mxCell id="e02" value="REST calls" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2C5282;strokeWidth=1.8;fillColor=#2C5282;fontSize=10;fontColor=#2C5282;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;endArrow=classic;endFill=1;" edge="1" parent="1" source="comp-ui" target="comp-api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Source Artifacts ─▶ API (upload artifacts) -->
+        <mxCell id="e03" value="upload artifacts" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.8;fillColor=#059669;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="zone-sources" target="comp-api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API ─▶ Lineage Agent Engine (invoke / resume) -->
+        <mxCell id="e04" value="invoke / resume" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2C5282;strokeWidth=1.8;fillColor=#2C5282;fontSize=10;fontColor=#2C5282;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-api" target="comp-engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine ─▶ Azure OpenAI (LLM calls) -->
+        <mxCell id="e05" value="LLM calls" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B21A8;strokeWidth=1.8;fillColor=#6B21A8;fontSize=10;fontColor=#6B21A8;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-engine" target="comp-openai">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine ─▶ SME Email Flow (gaps detected → trigger) -->
+        <mxCell id="e06" value="gaps detected" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.8;fillColor=#059669;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-engine" target="comp-sme-flow">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- SME Email Flow ─▶ Azure Communication Services (send questions) -->
+        <mxCell id="e07" value="send questions" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.8;fillColor=#059669;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-sme-flow" target="comp-acs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ACS ─▶ SME (email delivery, external) -->
+        <mxCell id="e08" value="email questions" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#94A3B8;strokeWidth=1.5;fillColor=#94A3B8;fontSize=10;fontColor=#475569;edgeStyle=orthogonalEdgeStyle;dashed=1;dashPattern=6 3;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-acs" target="actor-sme">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- SME ─▶ Email Webhook (email reply received) -->
+        <mxCell id="e09" value="email reply" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#94A3B8;strokeWidth=1.5;fillColor=#94A3B8;fontSize=10;fontColor=#475569;edgeStyle=orthogonalEdgeStyle;dashed=1;dashPattern=6 3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor-sme" target="comp-webhook">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Email Webhook ─▶ Engine (resume agent) -->
+        <mxCell id="e10" value="resume agent" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2C5282;strokeWidth=1.8;fillColor=#2C5282;fontSize=10;fontColor=#2C5282;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-webhook" target="comp-engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine ─▶ State Store (checkpoint) -->
+        <mxCell id="e11" value="checkpoint state" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0369A1;strokeWidth=1.5;fillColor=#0369A1;fontSize=10;fontColor=#0369A1;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-engine" target="comp-state">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine ─▶ Catalog Publisher (finalized lineage graph) -->
+        <mxCell id="e12" value="finalized graph" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.8;fillColor=#059669;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-engine" target="comp-pub">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Catalog Publisher ─▶ Alation (publish lineage) -->
+        <mxCell id="e13" value="publish lineage" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#94A3B8;strokeWidth=1.5;fillColor=#94A3B8;fontSize=10;fontColor=#475569;edgeStyle=orthogonalEdgeStyle;dashed=1;dashPattern=6 3;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-pub" target="cat-alation">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Catalog Publisher ─▶ Collibra (publish lineage) -->
+        <mxCell id="e14" value="publish lineage" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#94A3B8;strokeWidth=1.5;fillColor=#94A3B8;fontSize=10;fontColor=#475569;edgeStyle=orthogonalEdgeStyle;dashed=1;dashPattern=6 3;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-pub" target="cat-collibra">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API ─▶ ADLS (staging uploaded files) -->
+        <mxCell id="e15" value="stage files" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#15803D;strokeWidth=1.5;fillColor=#15803D;fontSize=10;fontColor=#166534;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="comp-api" target="comp-adls">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1140" y="413" />
+              <mxPoint x="1140" y="761" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
