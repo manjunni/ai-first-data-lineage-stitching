@@ -180,7 +180,7 @@ def page_dashboard() -> None:
         return colours.get(val, "")
 
     st.dataframe(
-        display_df.style.applymap(highlight_status, subset=["Status"]),
+        display_df.style.map(highlight_status, subset=["Status"]),
         use_container_width=True,
         hide_index=True,
     )
@@ -381,7 +381,7 @@ def page_lineage_graph() -> None:
                 return f"background-color:{colours.get(val, '')}"
 
             st.dataframe(
-                df.style.applymap(colour_level, subset=["Level"]),
+                df.style.map(colour_level, subset=["Level"]),
                 use_container_width=True, hide_index=True,
             )
         else:
