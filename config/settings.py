@@ -1,10 +1,13 @@
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+import os
 
+load_dotenv()  # Load environment variables from .env file
 
 class Settings(BaseSettings):
-    azure_openai_endpoint: str = ""
-    azure_openai_api_key: str = ""
-    azure_openai_deployment: str = "gpt-4o"
+    azure_openai_endpoint: str = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_openai_api_key: str = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_openai_deployment: str = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
     azure_communication_connection_string: str = ""
     email_sender_address: str = ""
