@@ -80,7 +80,9 @@ def render_mermaid(diagram: str, height: int = 500) -> None:
         st.info("No diagram available yet.")
         return
 
-    escaped = diagram.replace("`", "\\`")
+    # Escape for safe JS template-literal embedding; do NOT put raw source in HTML
+    # (the browser would HTML-encode > to &gt; breaking Mermaid arrow syntax)
+    escaped = diagram.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -92,10 +94,9 @@ def render_mermaid(diagram: str, height: int = 500) -> None:
   </style>
 </head>
 <body>
-  <div class="mermaid">
-{diagram}
-  </div>
+  <div class="mermaid" id="mermaid-container"></div>
   <script>
+    document.getElementById('mermaid-container').textContent = `{escaped}`;
     mermaid.initialize({{
       startOnLoad: true,
       theme: 'default',
