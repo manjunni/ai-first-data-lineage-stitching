@@ -107,7 +107,7 @@ def generate_mermaid(
         tgt = _safe_id(edge.target_id)
         label = _edge_label(edge, edge.id in gap_edge_ids)
         style = _mermaid_arrow(edge)
-        lines.append(f"    {src} {style}|{label}| {tgt}")
+        lines.append(f'    {src} {style}|"{label}"| {tgt}')
         edge_styles.append(_mermaid_link_style(edge_index, edge, edge.id in gap_edge_ids))
         edge_index += 1
 
@@ -276,11 +276,11 @@ def _mermaid_arrow(edge: LineageEdge) -> str:
     """Return the Mermaid arrow syntax appropriate for the confidence level."""
     match edge.confidence_level:
         case ConfidenceLevel.CONFIRMED | ConfidenceLevel.HIGH:
-            return "--"
+            return "-->"
         case ConfidenceLevel.MEDIUM:
-            return "-."
+            return ".->"
         case _:
-            return "~~"   # wavy for low-confidence / needs review
+            return "==>"   # thick for low-confidence / needs review
 
 
 def _mermaid_link_style(index: int, edge: LineageEdge, is_gap: bool) -> str:
