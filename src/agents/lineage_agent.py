@@ -11,7 +11,7 @@ from src.parsers.adf_parser import AdfParser
 from src.graph.stitcher import stitch_fragments
 from src.graph.gap_detector import detect_gaps
 from src.sme.question_generator import generate_questions
-from src.sme.email_handler import send_sme_questions, parse_email_responses
+from src.sme.email_handler import send_sme_questions
 from src.sme.response_processor import apply_responses_to_graph
 from src.scoring.confidence import score_graph
 from src.visualization.diagram_generator import generate_mermaid, generate_graphviz_dot
@@ -63,15 +63,36 @@ def stitch_graph_node(state: LineageState) -> dict:
 
 def detect_gaps_node(state: LineageState) -> dict:
     gaps = detect_gaps(state["lineage_graph"])
+    # Carry forward resolved status: gaps with the same (type, node, edge) that
+    # were already resolved in a prior iteration should stay resolved rather than
+    # being reset to False by fresh Gap objects produced by detect_gaps().
+    resolved_signatures = {
+        (g.gap_type, g.node_id, g.edge_id)
+        for g in state.get("gaps", [])
+        if g.resolved
+    }
+    for gap in gaps:
+        if (gap.gap_type, gap.node_id, gap.edge_id) in resolved_signatures:
+            gap.resolved = True
+    open_count = sum(1 for g in gaps if not g.resolved)
     return {
         "gaps": gaps,
         "status": "gaps_detected",
-        "audit_trail": [{"step": "gap_detection", "gaps_found": len(gaps), "ts": _now()}],
+        "audit_trail": [{"step": "gap_detection", "gaps_found": len(gaps), "open": open_count, "ts": _now()}],
     }
 
 
 def generate_sme_questions_node(state: LineageState) -> dict:
-    open_gaps = [g for g in state["gaps"] if not g.resolved]
+    # Skip gaps that already have a question to prevent duplicates on re-runs.
+    # Gap IDs change each detection pass, so match by (gap_type, node_id, edge_id).
+    asked_signatures = {
+        (q.get("gap_type"), q.get("node_id"), q.get("edge_id"))
+        for q in state.get("sme_questions", [])
+    }
+    open_gaps = [
+        g for g in state["gaps"]
+        if not g.resolved and (g.gap_type, g.node_id, g.edge_id) not in asked_signatures
+    ]
     questions = generate_questions(open_gaps, state["lineage_graph"])
     return {
         "sme_questions": questions,
@@ -95,15 +116,18 @@ def await_sme_responses_node(state: LineageState) -> dict:
     Interrupt the graph here and wait for SME email replies.
     The FastAPI layer resumes the graph by calling:
         graph.invoke(Command(resume=responses), config)
-    where responses is a list of parsed email reply dicts.
+    where responses is a list of already-parsed reply dicts (gap_id, raw_answer, …).
+    Both the /responses API endpoint and the email webhook pre-parse via
+    parse_email_responses() before resuming, so we must NOT parse again here.
     """
-    raw_responses = interrupt("Waiting for SME email responses")
-    parsed = parse_email_responses(raw_responses)
+    responses = interrupt("Waiting for SME email responses")
+    parsed = responses if isinstance(responses, list) else []
+    iteration = state.get("iteration", 0) + 1
     return {
         "sme_responses": parsed,
-        "iteration": state.get("iteration", 0) + 1,
+        "iteration": iteration,
         "status": "responses_received",
-        "audit_trail": [{"step": "sme_response", "responses": len(parsed), "iteration": state.get("iteration", 0) + 1, "ts": _now()}],
+        "audit_trail": [{"step": "sme_response", "responses": len(parsed), "iteration": iteration, "ts": _now()}],
     }
 
 

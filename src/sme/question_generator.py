@@ -91,6 +91,8 @@ def generate_questions(
         drafts.append({
             "gap_id":          gap.id,
             "gap_type":        gap.gap_type,
+            "node_id":         gap.node_id,
+            "edge_id":         gap.edge_id,
             "question":        template_q,
             "sme_email":       sme_email,
             "answered":        False,
