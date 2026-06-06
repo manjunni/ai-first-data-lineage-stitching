@@ -25,8 +25,8 @@ class LineageState(TypedDict):
     # Gaps detected in the current graph
     gaps: list[Gap]
 
-    # Questions sent to SMEs this run
-    sme_questions: Annotated[list[dict], operator.add]
+    # Questions sent to SMEs this run (replacement — accumulation managed manually in nodes)
+    sme_questions: list[dict]
 
     # Responses received from SMEs
     sme_responses: list[dict]

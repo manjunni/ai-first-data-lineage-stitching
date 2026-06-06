@@ -38,10 +38,11 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 
 _DEFAULTS = {
-    "run_id":     None,
-    "page":       "Dashboard",
-    "api_url":    os.getenv("API_BASE_URL", "http://localhost:8000"),
-    "last_error": None,
+    "run_id":          None,
+    "page":            "Dashboard",
+    "api_url":         os.getenv("API_BASE_URL", "http://localhost:8000"),
+    "last_error":      None,
+    "last_run_result": None,
 }
 for key, val in _DEFAULTS.items():
     if key not in st.session_state:
@@ -131,6 +132,7 @@ def render_sidebar() -> None:
                 status_chip(run.get("status", "unknown"))
             if st.button("Clear active run", use_container_width=True):
                 st.session_state.run_id = None
+                st.session_state.last_run_result = None
                 st.rerun()
 
 
@@ -261,10 +263,13 @@ def page_new_run() -> None:
         if result:
             run_id = result["run_id"]
             st.session_state.run_id = run_id
+            st.session_state.last_run_result = result
             st.success(f"Run started: `{run_id}`")
-            _show_run_result(result)
         else:
             st.error("Failed to start run. Check that the API is running.")
+
+    if st.session_state.last_run_result and st.session_state.run_id:
+        _show_run_result(st.session_state.last_run_result)
 
 
 def _show_run_result(run: dict) -> None:
@@ -504,6 +509,9 @@ def page_submit_responses() -> None:
     if status != "emails_sent":
         if status in ("finalized", "visuals_ready", "published"):
             st.success("✅ All gaps resolved — no responses needed.")
+            if st.button("🗺️ View Lineage Graph"):
+                st.session_state.page = "Lineage Graph"
+                st.rerun()
         else:
             st.info(f"This run is currently in status **{status}**. "
                     "Responses can only be submitted when status is `emails_sent`.")
@@ -566,10 +574,13 @@ def page_submit_responses() -> None:
             result = _api_call(client().submit_responses, run_id, parsed)
 
         if result:
+            st.session_state.last_run_result = result
             st.success("✅ Responses submitted! The run is continuing.")
-            _show_run_result(result)
         else:
             st.error("Failed to submit responses.")
+
+    if st.session_state.last_run_result and st.session_state.run_id:
+        _show_run_result(st.session_state.last_run_result)
 
 
 # ---------------------------------------------------------------------------
