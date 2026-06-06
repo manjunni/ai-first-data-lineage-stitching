@@ -83,29 +83,33 @@ def detect_gaps_node(state: LineageState) -> dict:
 
 
 def generate_sme_questions_node(state: LineageState) -> dict:
-    # Skip gaps that already have a question to prevent duplicates on re-runs.
-    # Gap IDs change each detection pass, so match by (gap_type, node_id, edge_id).
+    existing = state.get("sme_questions", [])
+    # Skip gaps already asked — gap IDs change each pass, so match by signature.
     asked_signatures = {
         (q.get("gap_type"), q.get("node_id"), q.get("edge_id"))
-        for q in state.get("sme_questions", [])
+        for q in existing
     }
     open_gaps = [
         g for g in state["gaps"]
         if not g.resolved and (g.gap_type, g.node_id, g.edge_id) not in asked_signatures
     ]
-    questions = generate_questions(open_gaps, state["lineage_graph"])
+    new_questions = generate_questions(open_gaps, state["lineage_graph"])
     return {
-        "sme_questions": questions,
+        "sme_questions": existing + new_questions,
         "status": "questions_generated",
-        "audit_trail": [{"step": "question_gen", "questions": len(questions), "ts": _now()}],
+        "audit_trail": [{"step": "question_gen", "questions": len(new_questions), "ts": _now()}],
     }
 
 
 def send_emails_node(state: LineageState) -> dict:
-    unanswered = [q for q in state["sme_questions"] if not q.get("answered")]
+    existing = state.get("sme_questions", [])
+    unanswered = [q for q in existing if not q.get("answered")]
     sent = send_sme_questions(unanswered)
+    # Update send_status in-place — do NOT append, to avoid duplicating questions.
+    sent_by_gap_id = {q.get("gap_id"): q for q in sent}
+    updated = [sent_by_gap_id.get(q.get("gap_id"), q) for q in existing]
     return {
-        "sme_questions": sent,
+        "sme_questions": updated,
         "status": "emails_sent",
         "audit_trail": [{"step": "send_email", "sent": len(sent), "ts": _now()}],
     }
