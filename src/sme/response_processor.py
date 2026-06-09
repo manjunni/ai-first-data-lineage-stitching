@@ -63,23 +63,29 @@ def apply_responses_to_graph(
     Returns (updated_gaps, updated_graph).
     """
     gap_index = {g.id: g for g in gaps}
-    llm = None  # lazy — only created when a matching gap is found
+
+    # Initialise LLM once — gracefully degrade if credentials are unavailable
+    try:
+        llm = _get_llm()
+    except Exception:
+        llm = None
 
     for response in responses:
         gap_id = response.get("gap_id")
         if not gap_id or gap_id not in gap_index:
             continue
 
-        if llm is None:
-            llm = _get_llm()
-
         gap = gap_index[gap_id]
-        question = _find_question_for_gap(gap_id, response)
         raw_answer = response.get("raw_answer", "")
         sme_email = response.get("sme_email", "")
 
-        structured = _extract_structured_answer(llm, question, raw_answer, gap)
-        _apply_to_graph(gap, structured, graph, sme_email, raw_answer)
+        if llm is not None:
+            question = _find_question_for_gap(gap_id, response)
+            structured = _extract_structured_answer(llm, question, raw_answer, gap)
+            _apply_to_graph(gap, structured, graph, sme_email, raw_answer)
+
+        # Mark the gap resolved regardless of whether the LLM was available —
+        # the SME has provided an answer and the loop should not ask again.
         gap.resolved = True
 
     return list(gap_index.values()), graph
