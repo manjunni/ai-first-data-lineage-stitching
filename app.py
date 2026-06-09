@@ -517,56 +517,55 @@ def page_submit_responses() -> None:
                     "Responses can only be submitted when status is `emails_sent`.")
         return
 
-    # Show pending questions as a reference
+    # Show each question with its answer input directly below it
     q_data = _api_call(client().get_questions, run_id, answered=False)
-    if q_data and q_data.get("questions"):
-        with st.expander("📋 Questions awaiting answers", expanded=True):
-            for q in q_data["questions"]:
-                st.markdown(f"**{gap_type_badge(q['gap_type'])}**")
-                st.markdown(f"> {q['question']}")
-                st.code(f"[REF:{q['gap_id']}]: <answer>", language="text")
-                st.divider()
+    questions = q_data.get("questions", []) if q_data else []
 
-    st.subheader("Paste full email reply")
-    st.caption(
-        "Paste the raw email body below. Use `[REF:gap-id]: answer` markers for each question. "
-        "Unstructured replies are also accepted — the AI will try to match them."
-    )
+    if not questions:
+        st.info("No pending questions found.")
+        return
 
-    reply_text = st.text_area(
-        "Email reply body",
-        height=250,
-        placeholder=(
-            "[REF:abc12345-...]: The data comes from ADLS container raw/orders\n"
-            "[REF:def67890-...]: This is a Databricks Delta table in main.silver.orders\n"
-        ),
-        key="reply_text",
-    )
+    st.subheader(f"📋 {len(questions)} question{'s' if len(questions) != 1 else ''} awaiting answers")
+
+    # Render each question with an inline answer field
+    for i, q in enumerate(questions):
+        gap_id = q["gap_id"]
+        answer_key = f"answer_{gap_id}"
+        st.markdown(f"**Q{i + 1} — {gap_type_badge(q['gap_type'])}**")
+        st.markdown(f"> {q['question']}")
+        st.text_input(
+            f"Your answer",
+            key=answer_key,
+            placeholder="Type your answer here…",
+            label_visibility="collapsed",
+        )
+        st.divider()
 
     col_submit, col_clear = st.columns([2, 1])
-    submit = col_submit.button("📨 Submit Responses", type="primary", use_container_width=True)
-    if col_clear.button("🗑️ Clear", use_container_width=True):
-        st.session_state.reply_text = ""
+    submit = col_submit.button("📨 Submit All Answers", type="primary", use_container_width=True)
+    if col_clear.button("🗑️ Clear All", use_container_width=True):
+        for q in questions:
+            st.session_state.pop(f"answer_{q['gap_id']}", None)
         st.rerun()
 
     if submit:
-        if not reply_text.strip():
-            st.error("Please enter a reply before submitting.")
+        # Build [REF:gap_id]: answer reply body from inline inputs
+        lines = []
+        for q in questions:
+            answer = st.session_state.get(f"answer_{q['gap_id']}", "").strip()
+            if answer:
+                lines.append(f"[REF:{q['gap_id']}]: {answer}")
+
+        if not lines:
+            st.error("Please provide at least one answer before submitting.")
             return
 
-        # Parse the reply and route to the API
+        reply_text = "\n".join(lines)
         from src.sme.email_handler import parse_email_responses
         raw = [{"from": "analyst@ui", "subject": f"[Lineage Agent] Run {run_id} — reply",
                 "body": reply_text}]
         parsed = parse_email_responses(raw)
 
-        if not any(p.get("gap_id") for p in parsed):
-            st.warning(
-                "No `[REF:gap-id]` markers found in the reply. "
-                "The AI will still attempt to extract answers, but structured markers are recommended."
-            )
-
-        # Attach run_id to each parsed response
         for p in parsed:
             p["run_id"] = run_id
 
@@ -575,6 +574,9 @@ def page_submit_responses() -> None:
 
         if result:
             st.session_state.last_run_result = result
+            # Clear answer inputs after successful submission
+            for q in questions:
+                st.session_state.pop(f"answer_{q['gap_id']}", None)
             st.success("✅ Responses submitted! The run is continuing.")
         else:
             st.error("Failed to submit responses.")
