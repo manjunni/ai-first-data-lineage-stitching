@@ -197,13 +197,20 @@ class TestUnresolvedAdfRefs:
         assert "unresolved_dataset_ref" in types
 
     def test_resolved_adf_node_not_flagged(self):
-        # After stitching with a dataset JSON the full_path stays adf://Name
-        # but system is upgraded — it should still be flagged as unresolved
-        # (the full_path is what matters, not the system type)
+        # When a dataset JSON is uploaded the system type is upgraded from UNKNOWN.
+        # A resolved adf:// node (system != UNKNOWN) should NOT produce a gap —
+        # the user already provided the dataset definition.
         n = _node("MyDS", system=SystemType.ADLS, full_path=f"{_ADF_NS}MyDS")
         graph = stitch_fragments([_fragment(n)])
         gaps = detect_gaps(graph)
-        # adf:// prefix present → still flagged
+        assert not any(g.gap_type == "unresolved_dataset_ref" for g in gaps)
+
+    def test_unknown_adf_node_still_flagged(self):
+        # An adf:// node whose system is still UNKNOWN means no dataset JSON
+        # was uploaded — it should remain flagged as unresolved.
+        n = _node("MyDS", system=SystemType.UNKNOWN, full_path=f"{_ADF_NS}MyDS")
+        graph = stitch_fragments([_fragment(n)])
+        gaps = detect_gaps(graph)
         assert any(g.gap_type == "unresolved_dataset_ref" for g in gaps)
 
     def test_normal_node_not_flagged_as_adf_ref(self):

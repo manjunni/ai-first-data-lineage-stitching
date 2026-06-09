@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -100,8 +101,18 @@ class AdfParser(BaseParser):
         except Exception:
             pass
 
+        # Only fall back to LLM when no recognised activity types were found.
+        # Pipelines with ExecuteDataFlow/DatabricksNotebook etc. are valid even if
+        # they produce no direct edges — edges come from the referenced DataFlow files.
         if not fragment.edges and file_type == "pipeline":
-            return _parse_with_llm_adf(content, filename)
+            activities = _flatten_activities(props.get("activities", []))
+            has_recognised = any(
+                a.get("type") in ("Copy", "ExecuteDataFlow", "DatabricksNotebook",
+                                  "DatabricksSparkJar", "DatabricksSparkPython", "Lookup")
+                for a in activities
+            )
+            if not has_recognised:
+                return _parse_with_llm_adf(content, filename)
 
         return fragment
 
@@ -328,8 +339,9 @@ def _extract_dataset_path(ds_type: str, tp: dict) -> str:
     # AzureBlobFS / ADLS Gen2 — new location block
     loc = tp.get("location", {})
     if loc:
-        fs   = loc.get("fileSystem", "")
-        folder = loc.get("folderPath", "")
+        fs     = loc.get("fileSystem", "")
+        # ADF uses either "folderPath" or "filePath" depending on the linked service type
+        folder = loc.get("folderPath", "") or loc.get("filePath", "")
         fname  = loc.get("fileName", "")
         parts = [p for p in [fs, folder, fname] if p]
         if parts:
@@ -341,17 +353,17 @@ def _extract_dataset_path(ds_type: str, tp: dict) -> str:
     if folder or fname:
         return "/".join(p for p in [folder, fname] if p)
 
+    # Databricks Delta Lake: database + table (check before generic SQL so that
+    # the database field is not silently dropped by the schema-less SQL path)
+    db    = tp.get("database", "")
+    table = tp.get("table", "") or tp.get("tableName", "")
+    if db and table:
+        return f"{db}.{table}"
+
     # SQL: schema + table or just tableName
     schema = tp.get("schema", "")
-    table  = tp.get("table", "") or tp.get("tableName", "")
     if table:
         return f"{schema}.{table}" if schema else table
-
-    # Databricks Delta Lake: database + table
-    db    = tp.get("database", "")
-    table = tp.get("table", "")
-    if db or table:
-        return f"{db}.{table}" if db and table else db or table
 
     return ""
 
@@ -370,7 +382,12 @@ def _make_ref_node(
         return node_registry[full_path]
 
     name = full_path.replace(_ADF_NS, "").split("/")[-1].split(".")[-1]
-    system = SystemType.ADLS if full_path.startswith(("abfss://", "wasbs://")) else SystemType.UNKNOWN
+    if full_path.startswith(("abfss://", "wasbs://")):
+        system = SystemType.ADLS
+    elif full_path.startswith(_ADF_NS):
+        system = SystemType.ADF
+    else:
+        system = SystemType.UNKNOWN
     info = {"name": name, "full_path": full_path, "system": system}
     return _get_or_create_node(info, node_registry, fragment)
 

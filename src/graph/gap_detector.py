@@ -56,6 +56,10 @@ def _unresolved_adf_refs(graph: LineageGraph) -> list[Gap]:
     gaps = []
     for node_id, node in graph.nodes.items():
         if node.full_path.startswith(_ADF_NS):
+            # If the dataset JSON was uploaded the system type will have been
+            # resolved from UNKNOWN — no need to ask the SME for it.
+            if node.system != SystemType.UNKNOWN:
+                continue
             dataset_name = node.full_path[len(_ADF_NS):]
             gaps.append(Gap(
                 gap_type="unresolved_dataset_ref",
