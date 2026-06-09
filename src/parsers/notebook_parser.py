@@ -122,11 +122,32 @@ class NotebookParser(BaseParser):
     """
 
     def can_parse(self, artifact: dict) -> bool:
-        return artifact.get("filename", "").lower().endswith(".ipynb")
+        filename = artifact.get("filename", "").lower()
+        if filename.endswith(".ipynb"):
+            return True
+        if artifact.get("artifact_type") == "notebook":
+            return True
+        # Non-DLT Databricks Python scripts with Spark patterns
+        if filename.endswith(".py"):
+            content = artifact.get("content", "")
+            has_spark = "spark." in content or "SparkSession" in content or "dbutils." in content
+            is_dlt = "@dlt." in content or "import dlt" in content
+            return has_spark and not is_dlt
+        return False
 
     def parse(self, artifact: dict) -> LineageFragment:
         content = artifact.get("content", "")
-        filename = artifact.get("filename", "unknown.ipynb")
+        filename = artifact.get("filename", "unknown")
+
+        if not filename.lower().endswith(".ipynb"):
+            # Plain Python Databricks file — apply regex directly without nbformat
+            try:
+                fragment = _parse_python_file(content, filename)
+                if fragment.edges:
+                    return fragment
+            except Exception:
+                pass
+            return _parse_with_llm_nb(content, filename)
 
         try:
             fragment = _parse_with_nbformat(content, filename)
@@ -267,13 +288,30 @@ def _absorb_sql(
         sql_frag = _parse_with_sqlglot(sql_text, filename)
     except Exception:
         return
-    # Merge nodes (deduplicate via registry)
+
+    # Tables referenced inside spark.sql() are Hive/Unity Catalog (Databricks),
+    # not SQL Server — override the SQL default from _infer_system.
+    # Build an id-remap so that edges always reference the canonical node id
+    # (a node with the same full_path may have been registered by an earlier
+    # spark.sql() call with a different uuid).
+    id_remap: dict[str, str] = {}
     for node in sql_frag.nodes:
-        if node.full_path not in node_registry:
+        if node.system == SystemType.SQL:
+            node.system = SystemType.DATABRICKS
+        # Skip ghost nodes produced by CREATE SCHEMA (empty name / trailing dot)
+        if not node.name or node.full_path.endswith("."):
+            continue
+        if node.full_path in node_registry:
+            id_remap[node.id] = node_registry[node.full_path].id
+        else:
             node_registry[node.full_path] = node
             fragment.nodes.append(node)
+            id_remap[node.id] = node.id
+
     for edge in sql_frag.edges:
-        fragment.edges.append(edge)
+        src_id = id_remap.get(edge.source_id, edge.source_id)
+        tgt_id = id_remap.get(edge.target_id, edge.target_id)
+        fragment.edges.append(edge.model_copy(update={"source_id": src_id, "target_id": tgt_id}))
 
 
 # ---------------------------------------------------------------------------
@@ -310,10 +348,15 @@ def _path_to_info(path: str) -> dict:
     parts = path.split(".")
     name = parts[-1]
     catalog = parts[0] if len(parts) >= 3 else None
+    system = _infer_system(path, catalog)
+    # In a Spark notebook, simple/2-part table names are Hive Metastore /
+    # Unity Catalog tables (Databricks), not SQL Server tables.
+    if system == SystemType.SQL:
+        system = SystemType.DATABRICKS
     return {
         "name": name,
         "full_path": path,
-        "system": _infer_system(path, catalog),
+        "system": system,
     }
 
 
@@ -364,6 +407,33 @@ def _join_logical_lines(source: str) -> list[str]:
         logical.append(buf.strip())
 
     return logical
+
+
+# ---------------------------------------------------------------------------
+# Plain Python file parser (non-.ipynb Databricks scripts)
+# ---------------------------------------------------------------------------
+
+def _parse_python_file(content: str, filename: str) -> LineageFragment:
+    """
+    Parse a .py Databricks script using the same regex/tracker logic as
+    _parse_with_nbformat but treating the entire file as one code block.
+    """
+    fragment = LineageFragment(artifact_name=filename, artifact_type="notebook")
+    node_registry: dict[str, LineageNode] = {}
+    tracker = DataFlowTracker()
+
+    logical_lines = _join_logical_lines(content)
+
+    for line in logical_lines:
+        for sql_text in _extract_spark_sql(line):
+            _absorb_sql(sql_text, filename, fragment, node_registry)
+        _process_read_assignment(line, tracker)
+        _process_derive_assignment(line, tracker)
+
+    for line in logical_lines:
+        _process_write(line, filename, tracker, fragment, node_registry)
+
+    return fragment
 
 
 # ---------------------------------------------------------------------------

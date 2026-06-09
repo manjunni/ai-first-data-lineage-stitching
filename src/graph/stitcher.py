@@ -31,15 +31,68 @@ def stitch_fragments(fragments: list[LineageFragment]) -> LineageGraph:
     # full_path → canonical node id
     path_to_id: dict[str, str] = {}
 
-    # Pass 1: merge nodes, building the path→id registry
+    # Pass 1: merge nodes, building the path→id registry.
+    # Secondary index by last path segment to merge unqualified names
+    # (e.g. "customer_orders") with schema-qualified ones
+    # (e.g. "curated.customer_orders") when they refer to the same table.
+    # Only applied for non-ADLS, non-ADF nodes with a 1-part unqualified path.
+    unqualified_to_id: dict[str, str] = {}  # last_segment → node_id (1-part paths only)
+
     for fragment in fragments:
         for node in fragment.nodes:
             if node.full_path in path_to_id:
                 existing_id = path_to_id[node.full_path]
-                _merge_node_metadata(graph.nodes[existing_id], node)
+                existing_node = graph.nodes[existing_id]
+                _merge_node_metadata(existing_node, node)
+                # If the existing node is an adf:// placeholder and the incoming
+                # node carries the actual table path, upgrade to the real path.
+                if existing_node.full_path.startswith(_ADF_NS) and not node.full_path.startswith(_ADF_NS):
+                    path_to_id[node.full_path] = existing_id
+                    existing_node.full_path = node.full_path
             else:
-                path_to_id[node.full_path] = node.id
-                graph.nodes[node.id] = node
+                is_storage_path = node.full_path.startswith(("abfss://", "wasbs://", _ADF_NS))
+                last_seg = node.full_path.split(".")[-1]
+                is_unqualified = "." not in node.full_path
+
+                if not is_storage_path and is_unqualified and last_seg in unqualified_to_id:
+                    # Incoming qualified node matches an existing unqualified one —
+                    # can't tell which is canonical here; keep existing
+                    existing_id = unqualified_to_id[last_seg]
+                    path_to_id[node.full_path] = existing_id
+                    _merge_node_metadata(graph.nodes[existing_id], node)
+                elif not is_storage_path and not is_unqualified and last_seg in unqualified_to_id:
+                    # Incoming qualified node whose base name matches an existing
+                    # unqualified node — merge and upgrade to the qualified path
+                    existing_id = unqualified_to_id[last_seg]
+                    existing_node = graph.nodes[existing_id]
+                    path_to_id[node.full_path] = existing_id
+                    path_to_id[existing_node.full_path] = existing_id
+                    existing_node.full_path = node.full_path  # prefer qualified
+                    _merge_node_metadata(existing_node, node)
+                else:
+                    path_to_id[node.full_path] = node.id
+                    graph.nodes[node.id] = node
+                    if not is_storage_path and is_unqualified:
+                        unqualified_to_id[last_seg] = node.id
+                    # For ADF dataset nodes whose description is a table reference
+                    # (e.g. "bronze.customers"), link them to the actual table node
+                    # so notebooks referencing the same table by name are merged.
+                    if node.full_path.startswith(_ADF_NS) and node.description:
+                        desc = node.description.strip()
+                        if desc and "/" not in desc and not desc.startswith("abfss://"):
+                            if desc in path_to_id:
+                                # Table node was registered first — redirect this
+                                # ADF placeholder to the existing canonical node.
+                                existing_id = path_to_id[desc]
+                                path_to_id[node.full_path] = existing_id
+                                del graph.nodes[node.id]
+                                _merge_node_metadata(graph.nodes[existing_id], node)
+                            else:
+                                # ADF node registered first — set up aliases so
+                                # the table node merges in when it arrives.
+                                path_to_id.setdefault(desc, node.id)
+                                seg = desc.split(".")[-1]
+                                unqualified_to_id.setdefault(seg, node.id)
 
     # Pass 2: remap edge endpoints to canonical ids, deduplicate edges
     # edge key: (canonical_source_id, canonical_target_id)

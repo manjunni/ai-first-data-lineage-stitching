@@ -69,8 +69,8 @@ def generate_mermaid(
     - Edge style (solid / dashed / dotted) by confidence level
     - Gap-flagged nodes highlighted in red
     """
-    gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id}
-    gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id}
+    gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id and not g.resolved}
+    gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id and not g.resolved}
 
     lines: list[str] = ["flowchart LR"]
 
@@ -138,8 +138,8 @@ def generate_graphviz_dot(
     - Edge label: transformation + confidence %
     - Gap nodes outlined in red with dashed border
     """
-    gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id}
-    gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id}
+    gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id and not g.resolved}
+    gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id and not g.resolved}
 
     lines: list[str] = [
         "digraph lineage {",
@@ -255,7 +255,9 @@ def _safe_id(node_id: str) -> str:
 def _display_label(node: LineageNode) -> str:
     """Human-readable node label: name (strips adf:// prefix), plus system."""
     name = node.name
-    if node.full_path.startswith(_ADF_NS):
+    # Only mark as unresolved when the system is still unknown — i.e. no
+    # dataset JSON was provided for this adf:// placeholder.
+    if node.full_path.startswith(_ADF_NS) and node.system == SystemType.UNKNOWN:
         name = f"{name}\n⚠ unresolved"
     return f"{name}\n[{node.system.value}]"
 
