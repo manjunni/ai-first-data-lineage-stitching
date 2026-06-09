@@ -235,7 +235,7 @@ def build_graph(checkpointer=None):
     workflow.add_edge("generate_sme_questions", "send_emails")
     workflow.add_edge("send_emails", "await_sme_responses")
     workflow.add_edge("await_sme_responses", "process_responses")
-    workflow.add_edge("process_responses", "stitch_graph")  # re-stitch with SME input
+    workflow.add_edge("process_responses", "detect_gaps")  # skip re-stitch to preserve SME-added edges
 
     workflow.add_edge("score_and_finalize", "generate_visuals")
     workflow.add_edge("generate_visuals", "publish_to_catalog")
