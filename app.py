@@ -31,7 +31,169 @@ st.set_page_config(
     page_icon="🕸️",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items=None,
 )
+
+# ---------------------------------------------------------------------------
+# RAISE / Capgemini theme
+# ---------------------------------------------------------------------------
+
+def _apply_raise_styles() -> None:
+    st.markdown("""
+    <style>
+        /* ── Hide default Streamlit chrome ── */
+        #MainMenu, footer,
+        div[data-testid="stToolbar"],
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"],
+        div[data-testid="stHeader"],
+        header[data-testid="stHeader"] {
+            display: none !important;
+            height: 0 !important;
+        }
+
+        /* ── Collapse the top gap left by the hidden header ── */
+        .block-container {
+            padding-top: 0.5rem !important;
+        }
+
+        /* ── Global background ── */
+        .stApp, div[data-testid="stAppViewContainer"] {
+            background-color: #2d1e5f !important;
+        }
+
+        /* ── Main content area ── */
+        .block-container {
+            background-color: #2d1e5f !important;
+            padding-top: 1rem !important;
+        }
+
+        /* ── Sidebar ── */
+        section[data-testid="stSidebar"] {
+            background-color: #1e123a !important;
+            border-right: 1px solid #3d2b70 !important;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #e8e0ff !important;
+        }
+        section[data-testid="stSidebar"] .stRadio label {
+            color: #e8e0ff !important;
+        }
+        section[data-testid="stSidebar"] .stButton > button {
+            background-color: #4a3587 !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+        }
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background-color: #5e44a8 !important;
+        }
+        section[data-testid="stSidebar"] hr {
+            border-color: #3d2b70 !important;
+        }
+        section[data-testid="stSidebar"] .stExpander {
+            background-color: #3d2b70 !important;
+            border: 1px solid #4a3587 !important;
+            border-radius: 4px !important;
+        }
+
+        /* ── Text colours ── */
+        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
+            color: #e8e0ff !important;
+        }
+        .stCaption, small { color: #b0a8d0 !important; }
+
+        /* ── Metric cards ── */
+        div[data-testid="stMetric"] {
+            background-color: #1e123a !important;
+            border: 1px solid #3d2b70 !important;
+            border-radius: 6px !important;
+            padding: 12px !important;
+        }
+        div[data-testid="stMetric"] label { color: #b0a8d0 !important; }
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+            color: #ffffff !important;
+            font-size: 2rem !important;
+        }
+
+        /* ── Primary buttons ── */
+        .stButton > button[kind="primary"] {
+            background-color: #1e88e5 !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+        }
+        .stButton > button[kind="primary"]:hover {
+            background-color: #0d47a1 !important;
+        }
+        .stButton > button {
+            background-color: #3d2b70 !important;
+            color: #e8e0ff !important;
+            border: 1px solid #4a3587 !important;
+            border-radius: 4px !important;
+        }
+        .stButton > button:hover {
+            background-color: #4a3587 !important;
+        }
+
+        /* ── Expanders ── */
+        div[data-testid="stExpander"] {
+            background-color: #1e123a !important;
+            border: 1px solid #3d2b70 !important;
+            border-radius: 6px !important;
+        }
+        div[data-testid="stExpander"] summary {
+            color: #e8e0ff !important;
+        }
+
+        /* ── DataFrames / tables ── */
+        .stDataFrame { background-color: #1e123a !important; }
+        .stDataFrame th {
+            background-color: #3d2b70 !important;
+            color: white !important;
+        }
+        .stDataFrame td { color: #e8e0ff !important; }
+
+        /* ── Tabs ── */
+        div[data-testid="stTabs"] button {
+            color: #b0a8d0 !important;
+        }
+        div[data-testid="stTabs"] button[aria-selected="true"] {
+            color: #ffffff !important;
+            border-bottom-color: #1e88e5 !important;
+        }
+
+        /* ── Inputs ── */
+        .stTextInput input, .stTextArea textarea, .stSelectbox select {
+            background-color: #1e123a !important;
+            color: #e8e0ff !important;
+            border-color: #4a3587 !important;
+            border-radius: 4px !important;
+        }
+
+        /* ── Code blocks ── */
+        code, pre {
+            background-color: #1e123a !important;
+            color: #c0b8e8 !important;
+            border: 1px solid #3d2b70 !important;
+            border-radius: 4px !important;
+        }
+
+        /* ── Dividers ── */
+        hr { border-color: #3d2b70 !important; }
+
+        /* ── Alerts ── */
+        div[data-testid="stAlert"] {
+            border-radius: 4px !important;
+        }
+
+        /* ── Spinner ── */
+        div[data-testid="stSpinner"] { color: #1e88e5 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+_apply_raise_styles()
 
 # ---------------------------------------------------------------------------
 # Session state initialisation
@@ -77,7 +239,18 @@ def _api_call(fn, *args, **kwargs):
 
 def render_sidebar() -> None:
     with st.sidebar:
-        st.markdown("## 🕸️ Lineage Agent")
+        st.markdown("""
+        <div style="padding:10px 0 8px 0;">
+            <img src="https://www.capgemini.com/wp-content/themes/capgemini-komposite/assets/images/logo.svg"
+                 style="height:32px;margin-bottom:6px;" alt="Capgemini">
+            <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">
+                Data Lineage Agent
+            </div>
+            <div style="font-size:11px;color:#b0a8d0;margin-top:2px;">
+                Insights &amp; Data
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         st.divider()
 
         # API connection

@@ -203,10 +203,19 @@ def render_workflow_progress(status: str) -> None:
 # ---------------------------------------------------------------------------
 
 def section_header(title: str, subtitle: str = "") -> None:
-    st.markdown(f"### {title}")
-    if subtitle:
-        st.caption(subtitle)
-    st.divider()
+    subtitle_html = (
+        f'<div style="font-size:13px;color:#b0a8d0;margin-top:4px;">{subtitle}</div>'
+        if subtitle else ""
+    )
+    st.markdown(
+        f'<div style="background-color:#3d2b70;border-radius:6px 6px 0 0;'
+        f'padding:10px 16px;margin-bottom:0;border-bottom:2px solid #1e88e5;">'
+        f'<span style="font-size:18px;font-weight:700;color:#ffffff;">{title}</span>'
+        f'{subtitle_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div style="margin-bottom:16px;"></div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +234,12 @@ def metric_row(metrics: list[tuple[str, str, str | None]]) -> None:
 # ---------------------------------------------------------------------------
 
 def empty_state(icon: str, message: str, hint: str = "") -> None:
-    hint_html = f'<div style="font-size:13px;margin-top:4px">{hint}</div>' if hint else ""
+    hint_html = f'<div style="font-size:13px;margin-top:4px;color:#b0a8d0;">{hint}</div>' if hint else ""
     st.markdown(
-        f'<div style="text-align:center;padding:48px;color:#666">'
+        f'<div style="text-align:center;padding:48px;background-color:#1e123a;'
+        f'border-radius:6px;border:1px solid #3d2b70;">'
         f'<div style="font-size:48px">{icon}</div>'
-        f'<div style="font-size:18px;margin-top:8px">{message}</div>'
+        f'<div style="font-size:18px;margin-top:8px;color:#e8e0ff;">{message}</div>'
         f'{hint_html}'
         f'</div>',
         unsafe_allow_html=True,
