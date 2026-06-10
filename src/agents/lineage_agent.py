@@ -54,6 +54,10 @@ def parse_artifacts(state: LineageState) -> dict:
 
 def stitch_graph_node(state: LineageState) -> dict:
     graph = stitch_fragments(state["fragments"])
+    # Score immediately so edge.confidence is consistent with the confidence tab
+    # from the first render — avoids the edge table showing raw parser values
+    # while the confidence tab shows re-scored (lower) values.
+    score_graph(graph)
     return {
         "lineage_graph": graph,
         "status": "stitched",
