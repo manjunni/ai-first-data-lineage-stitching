@@ -76,8 +76,8 @@ def graph_confidence_summary(
             cross_system += 1
         src = graph.nodes.get(edge.source_id)
         tgt = graph.nodes.get(edge.target_id)
-        if (src and src.full_path.startswith(_ADF_NS)) or \
-           (tgt and tgt.full_path.startswith(_ADF_NS)):
+        if (src and src.full_path.startswith(_ADF_NS) and src.system == SystemType.UNKNOWN) or \
+           (tgt and tgt.full_path.startswith(_ADF_NS) and tgt.system == SystemType.UNKNOWN):
             unresolved_adf += 1
 
     return {
@@ -129,9 +129,11 @@ def _apply_penalties(base: float, edge: LineageEdge, graph: LineageGraph) -> flo
     src = graph.nodes.get(edge.source_id)
     tgt = graph.nodes.get(edge.target_id)
 
-    # Unresolved ADF placeholder on either endpoint
+    # Unresolved ADF placeholder on either endpoint — only penalise when the
+    # system type is still UNKNOWN (dataset JSON not uploaded).  Nodes that
+    # have been resolved to ADF/ADLS/DATABRICKS are no longer "unresolved".
     for node in (src, tgt):
-        if node and node.full_path.startswith(_ADF_NS):
+        if node and node.full_path.startswith(_ADF_NS) and node.system == SystemType.UNKNOWN:
             base += _PENALTY_ADF_UNRESOLVED
             break  # apply once even if both ends are unresolved
 
