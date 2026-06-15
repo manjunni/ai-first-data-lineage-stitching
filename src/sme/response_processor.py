@@ -88,6 +88,13 @@ def apply_responses_to_graph(
         # the SME has provided an answer and the loop should not ask again.
         gap.resolved = True
 
+        # Credit the SME on the node they answered about so it appears in
+        # the Owner column of the Nodes table.
+        if sme_email and gap.node_id:
+            node = graph.nodes.get(gap.node_id)
+            if node and not node.owner:
+                node.owner = sme_email
+
     return list(gap_index.values()), graph
 
 
