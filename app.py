@@ -699,11 +699,6 @@ def page_submit_responses() -> None:
         return
 
     st.subheader(f"📋 {len(questions)} question{'s' if len(questions) != 1 else ''} awaiting answers")
-    responder_name = st.text_input(
-        "Your name or email (appears as owner of resolved nodes)",
-        key="responder_name",
-        placeholder="e.g. Manjusha Unnikrishnan",
-    )
 
     # Render each question with an inline answer field
     for i, q in enumerate(questions):
@@ -740,8 +735,7 @@ def page_submit_responses() -> None:
 
         reply_text = "\n".join(lines)
         from src.sme.email_handler import parse_email_responses
-        sender = st.session_state.get("responder_name", "").strip() or "analyst@ui"
-        raw = [{"from": sender, "subject": f"[Lineage Agent] Run {run_id} — reply",
+        raw = [{"from": "analyst@ui", "subject": f"[Lineage Agent] Run {run_id} — reply",
                 "body": reply_text}]
         parsed = parse_email_responses(raw)
 
