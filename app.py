@@ -17,7 +17,7 @@ import streamlit as st
 
 from src.ui.api_client import LineageApiClient, ApiError
 from src.ui.components import (
-    status_chip, render_mermaid, render_system_legend,
+    status_chip, render_mermaid, render_graphviz, render_system_legend,
     render_workflow_progress, section_header, metric_row,
     empty_state, confidence_badge, gap_type_badge,
 )
@@ -511,8 +511,11 @@ def page_lineage_graph() -> None:
 
     with tab_dot:
         if visuals:
-            st.code(visuals.get("graphviz", ""), language="dot")
-            st.caption("Copy the DOT source above and paste into https://dreampuf.github.io/GraphvizOnline/")
+            dot = visuals.get("graphviz", "")
+            height_dot = st.slider("Diagram height", 300, 1200, 600, 50, key="dot_height")
+            render_graphviz(dot, height=height_dot)
+            with st.expander("📋 Raw DOT source"):
+                st.code(dot, language="dot")
         else:
             empty_state("⌛", "Not yet available")
 

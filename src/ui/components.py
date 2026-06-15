@@ -110,6 +110,53 @@ def render_mermaid(diagram: str, height: int = 500) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Graphviz DOT diagram
+# ---------------------------------------------------------------------------
+
+def render_graphviz(dot_source: str, height: int = 600) -> None:
+    """Render a Graphviz DOT diagram inline using viz.js (pure JS, no WASM)."""
+    if not dot_source:
+        st.info("No diagram available yet.")
+        return
+
+    # Escape for safe embedding inside a JS string literal
+    escaped = (
+        dot_source
+        .replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("${", "\\${")
+    )
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js"></script>
+  <style>
+    body {{ margin: 0; background: white; overflow: auto; }}
+    #graph svg {{ max-width: 100%; height: auto; }}
+  </style>
+</head>
+<body>
+  <div id="graph"><p style="color:#888;font-family:sans-serif;">Rendering diagram…</p></div>
+  <script>
+    var dot = `{escaped}`;
+    var viz = new Viz();
+    viz.renderString(dot, {{ format: "svg" }})
+      .then(function(svg) {{
+        document.getElementById("graph").innerHTML = svg;
+      }})
+      .catch(function(err) {{
+        document.getElementById("graph").innerHTML =
+          '<p style="color:red;font-family:sans-serif;">Render error: ' + err + '</p>';
+      }});
+  </script>
+</body>
+</html>"""
+    stc.html(html, height=height, scrolling=True)
+
+
+# ---------------------------------------------------------------------------
 # System legend
 # ---------------------------------------------------------------------------
 
