@@ -498,17 +498,8 @@ async def publish_run(run_id: str, body: PublishRequest = PublishRequest()):
 
 
 def _publish_result_to_response(run_id: str, result) -> PublishResponse:
-    payload_summary = None
-    if result.payload:
-        p = result.payload
-        if "lineage" in p:
-            payload_summary = {"format": "alation", "lineage_items": len(p["lineage"])}
-        elif "assets" in p:
-            payload_summary = {
-                "format": "collibra",
-                "assets": len(p["assets"]),
-                "relations": len(p.get("relations", [])),
-            }
+    # Return the full payload so the UI can display a meaningful preview.
+    payload_summary = result.payload or None
     return PublishResponse(
         run_id=run_id,
         catalog=result.catalog,

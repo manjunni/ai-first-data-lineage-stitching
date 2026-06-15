@@ -242,8 +242,9 @@ def build_graph(checkpointer=None):
     workflow.add_edge("process_responses", "detect_gaps")  # skip re-stitch to preserve SME-added edges
 
     workflow.add_edge("score_and_finalize", "generate_visuals")
-    workflow.add_edge("generate_visuals", "publish_to_catalog")
-    workflow.add_edge("publish_to_catalog", END)
+    workflow.add_edge("generate_visuals", END)
+    # publish_to_catalog is intentionally NOT in the automatic workflow —
+    # publishing is triggered explicitly via POST /runs/{id}/publish from the UI.
 
     return workflow.compile(checkpointer=checkpointer or MemorySaver())
 

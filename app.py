@@ -263,16 +263,11 @@ def render_sidebar() -> None:
             health = _api_call(client().health)
             if health:
                 st.success("Connected ✓")
-                alation_ready = health.get("catalog_config", {}).get("alation_ready", False)
-                collibra_ready = health.get("catalog_config", {}).get("collibra_ready", False)
-                if alation_ready:
-                    st.caption("✅ Alation configured")
-                else:
-                    st.caption("⚠️ Alation: missing credentials")
-                if collibra_ready:
-                    st.caption("✅ Collibra configured")
-                else:
-                    st.caption("⚠️ Collibra: missing credentials")
+                catalog_cfg = health.get("catalog_config", {})
+                alation_ready  = catalog_cfg.get("alation_ready", False)
+                collibra_ready = catalog_cfg.get("collibra_ready", False)
+                st.caption("✅ Alation configured" if alation_ready else "⚠️ Alation: not configured")
+                st.caption("✅ Collibra configured" if collibra_ready else "⚠️ Collibra: not configured")
             else:
                 st.error("Cannot reach API")
 
@@ -858,8 +853,12 @@ def page_publish() -> None:
         render_workflow_progress(status)
         return
 
-    col_catalog, col_action = st.columns([2, 2])
-    catalog = col_catalog.selectbox(
+    # Compute catalog_ready BEFORE rendering the columns so the button's
+    # disabled state reflects the current selection correctly.
+    health = _api_call(client().health)
+    catalog_cfg = health.get("catalog_config", {}) if health else {}
+
+    catalog = st.selectbox(
         "Target catalog",
         ["dry_run", "alation", "collibra"],
         index=["dry_run", "alation", "collibra"].index(
@@ -867,6 +866,18 @@ def page_publish() -> None:
         ),
         key="publish_catalog",
     )
+    catalog_ready = catalog == "dry_run" or catalog_cfg.get(f"{catalog}_ready", False)
+
+    col_catalog, col_action = st.columns([2, 2])
+
+    if catalog != "dry_run" and not catalog_ready:
+        st.warning(
+            f"⚠️ **{catalog.capitalize()} is not configured.** "
+            f"You can still preview the payload below. "
+            f"To publish, set `{catalog.upper()}_BASE_URL` and credentials in `.env`."
+        )
+
+    st.divider()
 
     # Preview
     st.subheader("📋 Payload preview")
@@ -884,17 +895,11 @@ def page_publish() -> None:
     st.subheader("🚀 Publish")
     if catalog == "dry_run":
         st.info("**dry_run** — the payload will be serialised and returned but NOT sent to any catalog. Safe to use for testing.")
-    else:
-        health = _api_call(client().health)
-        ready = health and health.get("catalog_config", {}).get(f"{catalog}_ready", False)
-        if not ready:
-            st.error(
-                f"⚠️ {catalog.capitalize()} credentials are not configured. "
-                f"Set `{catalog.upper()}_BASE_URL` and the corresponding API key/password in `.env`."
-            )
 
-    if col_action.button(
-        f"📤 Publish to {catalog}", type="primary", use_container_width=True
+    if st.button(
+        f"📤 Publish to {catalog}", type="primary",
+        disabled=not catalog_ready,
+        help=None if catalog_ready else f"Configure {catalog.capitalize()} credentials in .env first",
     ):
         with st.spinner(f"Publishing to {catalog}…"):
             result = _api_call(client().publish, run_id, catalog=catalog)
@@ -924,8 +929,27 @@ def _render_publish_result(result: dict) -> None:
                 st.markdown(f"- [{url}]({url})")
 
     if result.get("payload_summary"):
-        with st.expander("📦 Payload summary"):
-            st.json(result["payload_summary"])
+        payload = result["payload_summary"]
+        # Show a human-readable breakdown alongside the raw JSON
+        if "lineage" in payload:
+            items = payload["lineage"]
+            st.subheader(f"📦 Alation payload — {len(items)} lineage item{'s' if len(items) != 1 else ''}")
+            for i, item in enumerate(items):
+                df_name = item.get("dataflow", {}).get("name", f"item {i+1}")
+                with st.expander(f"🔗 {df_name}", expanded=i == 0):
+                    st.json(item)
+        elif "assets" in payload:
+            assets    = payload.get("assets", [])
+            relations = payload.get("relations", [])
+            st.subheader(f"📦 Collibra payload — {len(assets)} assets, {len(relations)} relations")
+            tab_a, tab_r = st.tabs(["Assets", "Relations"])
+            with tab_a:
+                st.json(assets)
+            with tab_r:
+                st.json(relations)
+        else:
+            with st.expander("📦 Full payload"):
+                st.json(payload)
 
 
 # ---------------------------------------------------------------------------
