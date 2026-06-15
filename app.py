@@ -524,13 +524,20 @@ def page_lineage_graph() -> None:
     with tab_nodes:
         lineage = _api_call(client().get_lineage, run_id)
         if lineage and lineage.get("nodes"):
+            def _display_path(n: dict) -> str:
+                # For adf:// placeholder nodes, the actual storage path is
+                # in the description field — show that instead.
+                fp = n["full_path"]
+                if fp.startswith("adf://") and n.get("description"):
+                    return n["description"]
+                return fp
+
             df = pd.DataFrame([
                 {
-                    "Name":        n["name"],
-                    "System":      n["system"],
-                    "Full Path":   n["full_path"],
-                    "Owner":       n.get("owner") or "—",
-                    "Description": (n.get("description") or "")[:60],
+                    "Name":      n["name"],
+                    "System":    n["system"],
+                    "Full Path": _display_path(n),
+                    "Owner":     n.get("owner") or "—",
                 }
                 for n in lineage["nodes"]
             ])
@@ -699,6 +706,11 @@ def page_submit_responses() -> None:
         return
 
     st.subheader(f"📋 {len(questions)} question{'s' if len(questions) != 1 else ''} awaiting answers")
+    responder_name = st.text_input(
+        "Your name or email (appears as owner of resolved nodes)",
+        key="responder_name",
+        placeholder="e.g. Manjusha Unnikrishnan",
+    )
 
     # Render each question with an inline answer field
     for i, q in enumerate(questions):
@@ -735,7 +747,8 @@ def page_submit_responses() -> None:
 
         reply_text = "\n".join(lines)
         from src.sme.email_handler import parse_email_responses
-        raw = [{"from": "analyst@ui", "subject": f"[Lineage Agent] Run {run_id} — reply",
+        sender = st.session_state.get("responder_name", "").strip() or "analyst@ui"
+        raw = [{"from": sender, "subject": f"[Lineage Agent] Run {run_id} — reply",
                 "body": reply_text}]
         parsed = parse_email_responses(raw)
 
