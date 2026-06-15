@@ -460,7 +460,8 @@ class TestPublishEndpoints:
         c, (mock, run_id, state) = client
         resp = c.get(f"/runs/{run_id}/publish-preview?catalog=collibra")
         data = resp.json()
-        assert data["payload_summary"]["format"] == "collibra"
+        # payload_summary now contains the full payload (assets + relations keys)
+        assert "assets" in data["payload_summary"]
 
     def test_publish_endpoint_calls_publisher(self, client):
         c, (mock, run_id, state) = client
