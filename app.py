@@ -524,13 +524,20 @@ def page_lineage_graph() -> None:
     with tab_nodes:
         lineage = _api_call(client().get_lineage, run_id)
         if lineage and lineage.get("nodes"):
+            def _display_path(n: dict) -> str:
+                # For adf:// placeholder nodes, the actual storage path is
+                # in the description field — show that instead.
+                fp = n["full_path"]
+                if fp.startswith("adf://") and n.get("description"):
+                    return n["description"]
+                return fp
+
             df = pd.DataFrame([
                 {
-                    "Name":        n["name"],
-                    "System":      n["system"],
-                    "Full Path":   n["full_path"],
-                    "Owner":       n.get("owner") or "—",
-                    "Description": (n.get("description") or "")[:60],
+                    "Name":      n["name"],
+                    "System":    n["system"],
+                    "Full Path": _display_path(n),
+                    "Owner":     n.get("owner") or "—",
                 }
                 for n in lineage["nodes"]
             ])
