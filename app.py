@@ -239,16 +239,11 @@ def _api_call(fn, *args, **kwargs):
 
 def render_sidebar() -> None:
     with st.sidebar:
+        st.image("assets/capgemini-logo.png", width=150)
         st.markdown("""
-        <div style="padding:10px 0 8px 0;">
-            <img src="https://www.capgemini.com/wp-content/themes/capgemini-komposite/assets/images/logo.svg"
-                 style="height:32px;margin-bottom:6px;" alt="Capgemini">
-            <div style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">
-                Data Lineage Agent
-            </div>
-            <div style="font-size:11px;color:#b0a8d0;margin-top:2px;">
-                Insights &amp; Data
-            </div>
+        <div style="padding-top:8px;">
+            <div class="app-name">Data Lineage Stitching Agent<span style="font-size: 16px; opacity: 0.7; font-weight: normal; vertical-align: super;"></span></div>
+            
         </div>
         """, unsafe_allow_html=True)
         st.divider()
