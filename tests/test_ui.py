@@ -10,6 +10,7 @@ from src.ui.api_client import LineageApiClient, ApiError
 from src.ui.components import (
     status_badge, confidence_badge, gap_type_badge,
     _STATUS_COLOUR, _CONFIDENCE_COLOUR, _GAP_TYPE_ICON,
+    PAGE_DESCRIPTIONS,
 )
 
 
@@ -215,3 +216,26 @@ class TestGapTypeBadge:
         for gap_type in _GAP_TYPE_ICON:
             badge = gap_type_badge(gap_type)
             assert _GAP_TYPE_ICON[gap_type] in badge
+
+
+class TestPageDescriptions:
+
+    NAVIGATION_PAGES = {
+        "Dashboard",
+        "New Run",
+        "Lineage Graph",
+        "Gaps & Questions",
+        "Submit Responses",
+        "Confidence",
+        "Publish",
+        "Audit Trail",
+    }
+
+    def test_every_navigation_page_has_a_description(self):
+        assert set(PAGE_DESCRIPTIONS) == self.NAVIGATION_PAGES
+        assert all(description.strip() for description in PAGE_DESCRIPTIONS.values())
+
+    def test_descriptions_are_approximately_twenty_words(self):
+        for description in PAGE_DESCRIPTIONS.values():
+            word_count = len(description.split())
+            assert 15 <= word_count <= 25
