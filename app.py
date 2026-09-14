@@ -19,7 +19,7 @@ from src.ui.api_client import LineageApiClient, ApiError
 from src.ui.components import (
     status_chip, render_mermaid, render_graphviz, render_system_legend,
     render_workflow_progress, section_header, metric_row,
-    empty_state, confidence_badge, gap_type_badge,
+    empty_state, confidence_badge, gap_type_badge, PAGE_DESCRIPTIONS,
 )
 
 # ---------------------------------------------------------------------------
@@ -281,6 +281,7 @@ def render_sidebar() -> None:
         ]
         selected = st.radio("Navigation", pages,
                             index=pages.index(st.session_state.page))
+        st.caption(PAGE_DESCRIPTIONS[selected])
         if selected != st.session_state.page:
             st.session_state.page = selected
             st.rerun()
