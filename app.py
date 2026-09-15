@@ -725,7 +725,7 @@ def page_submit_responses() -> None:
                     label_visibility="collapsed",
                 )
         uploaded = st.file_uploader(
-            "Upload a response document (optional)",
+            "OR Upload a response document",
             type=["txt", "docx", "xlsx", "pdf", "json"],
             key=f"response_file_{gap_id}",
             help="Upload a document containing the answer to this question.",
