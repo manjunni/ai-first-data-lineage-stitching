@@ -136,6 +136,30 @@ class TestApiClientResponses:
         assert "run-xyz" in url
         assert "responses" in url
 
+    def test_submit_response_files_posts_multipart_payload(self):
+        c = _client()
+        import io
+        files = [("files", ("response.txt", io.BytesIO(b"[REF:g1]: answer"), "text/plain"))]
+        with patch.object(c._session, "post", return_value=_mock_response(200, {"status": "ok"})) as mock_post:
+            result = c.submit_response_files(
+                "run-xyz", files, text="[REF:g2]: extra", sme_email="sme@example.com"
+            )
+        assert result == {"status": "ok"}
+        url = mock_post.call_args[0][0]
+        kwargs = mock_post.call_args[1]
+        assert url.endswith("/runs/run-xyz/responses/files")
+        assert kwargs["files"] == files
+        assert kwargs["data"] == {
+            "text": "[REF:g2]: extra",
+            "sme_email": "sme@example.com",
+        }
+
+    def test_submit_response_files_omits_blank_optional_fields(self):
+        c = _client()
+        with patch.object(c._session, "post", return_value=_mock_response(200, {})) as mock_post:
+            c.submit_response_files("run-xyz", [], text=" ", sme_email="")
+        assert mock_post.call_args[1]["data"] == {}
+
     def test_connection_error_raises_api_error_status_0(self):
         c = _client()
         import requests

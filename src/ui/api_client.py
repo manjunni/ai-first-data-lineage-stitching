@@ -56,6 +56,25 @@ class LineageApiClient:
     def submit_responses(self, run_id: str, responses: list[dict]) -> Optional[dict]:
         return self._post(f"/runs/{run_id}/responses", {"responses": responses})
 
+    def submit_response_files(
+        self,
+        run_id: str,
+        files: list[tuple],
+        text: str = "",
+        sme_email: str = "",
+    ) -> Optional[dict]:
+        """Submit uploaded SME response files and optional direct text."""
+        data = {}
+        if text.strip():
+            data["text"] = text
+        if sme_email.strip():
+            data["sme_email"] = sme_email
+        return self._post_multipart(
+            f"/runs/{run_id}/responses/files",
+            files=files,
+            data=data,
+        )
+
     # ------------------------------------------------------------------
     # Visuals
     # ------------------------------------------------------------------

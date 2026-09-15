@@ -333,6 +333,123 @@ class TestSubmitResponses:
         assert resp.status_code == 404
 
 
+class TestSubmitResponsesFiles:
+    """Tests for the new file upload endpoint: POST /runs/{run_id}/responses/files"""
+
+    def test_text_input_only(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        gap_id = str(uuid.uuid4())
+        text_input = f"[REF:{gap_id}]: The source is sales_db.customer"
+        
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            data={"text": text_input, "sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 200
+        mock.invoke.assert_called_once()
+
+    def test_file_upload_txt(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        gap_id = str(uuid.uuid4())
+        file_content = f"[REF:{gap_id}]: Data flows to ADLS bronze layer"
+        
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            files={"files": ("response.txt", io.BytesIO(file_content.encode()), "text/plain")},
+            data={"sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 200
+        mock.invoke.assert_called_once()
+
+    def test_multiple_files(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        gap_id_1 = str(uuid.uuid4())
+        gap_id_2 = str(uuid.uuid4())
+        file1_content = f"[REF:{gap_id_1}]: Source is sales_db"
+        file2_content = f"[REF:{gap_id_2}]: Target is ADLS"
+        
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            files=[
+                ("files", ("response1.txt", io.BytesIO(file1_content.encode()), "text/plain")),
+                ("files", ("response2.txt", io.BytesIO(file2_content.encode()), "text/plain")),
+            ],
+            data={"sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 200
+
+    def test_text_and_files_combined(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        gap_id_1 = str(uuid.uuid4())
+        gap_id_2 = str(uuid.uuid4())
+        file_content = f"[REF:{gap_id_1}]: From file"
+        text_input = f"[REF:{gap_id_2}]: From text"
+        
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            files={"files": ("response.txt", io.BytesIO(file_content.encode()), "text/plain")},
+            data={"text": text_input, "sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 200
+
+    def test_no_input_returns_400(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            data={"sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 400
+        assert "No gap responses found" in resp.json()["detail"]
+
+    def test_409_when_not_waiting(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "published"
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            data={"text": "[REF:gap-001]: answer"},
+        )
+        assert resp.status_code == 409
+
+    def test_404_for_missing_run(self, client):
+        c, (mock, run_id, state) = client
+        mock.get_state.return_value = MagicMock(values=None)
+        resp = c.post(
+            f"/runs/{uuid.uuid4()}/responses/files",
+            data={"text": "[REF:gap-001]: answer"},
+        )
+        assert resp.status_code == 404
+
+    def test_invalid_file_format_returns_400(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "emails_sent"
+        mock.get_state.return_value = MagicMock(values=state)
+
+        # Upload file with unsupported extension
+        resp = c.post(
+            f"/runs/{run_id}/responses/files",
+            files={"files": ("response.xyz", io.BytesIO(b"content"), "application/octet-stream")},
+            data={"sme_email": "sme@corp.com"},
+        )
+        assert resp.status_code == 400
+        assert "Failed to process file" in resp.json()["detail"]
+
+
+
 # ===========================================================================
 # POST /webhooks/email-reply
 # ===========================================================================
