@@ -15,7 +15,7 @@ from src.api.models import (
     LineageGraphResponse, NodeResponse, EdgeResponse,
     GapListResponse, GapResponse,
     QuestionListResponse, QuestionResponse,
-    SmeResponsePayload, EmailWebhookPayload,
+    SmeResponsePayload, SmeFileUploadPayload, EmailWebhookPayload,
     ConfidenceSummaryResponse,
     VisualsResponse,
     PublishRequest, PublishResponse,
@@ -26,7 +26,8 @@ from src.scoring.confidence import score_graph, graph_confidence_summary
 from src.visualization.diagram_generator import (
     generate_mermaid, generate_graphviz_dot, generate_summary_html,
 )
-from src.sme.email_handler import parse_email_responses
+from src.sme.email_handler import parse_email_responses, parse_responses_from_text
+from src.sme.file_handlers import extract_text_from_file, FileHandlerError
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -338,6 +339,79 @@ async def submit_sme_responses(run_id: str, payload: SmeResponsePayload):
         _get_agent().invoke, Command(resume=payload.responses), _config(run_id)
     )
     return _run_summary(run_id, _require_state(run_id))
+
+
+@app.post("/runs/{run_id}/responses/files", response_model=RunSummary, tags=["sme"])
+async def submit_sme_responses_files(
+    run_id: str,
+    files: Optional[list[UploadFile]] = File(None, description="Gap-fixing response files (.txt, .docx, .xlsx, .pdf, .json)"),
+    text: Optional[str] = Form(None, description="Direct text input (alternative to files)"),
+    sme_email: Optional[str] = Form(None, description="SME email address"),
+):
+    """
+    Submit SME gap-fixing responses via file upload or direct text.
+    
+    Supports multiple file formats:
+    - .txt — Plain text with [REF:gap-id]: answer patterns
+    - .docx — Word documents with structured responses
+    - .xlsx — Excel spreadsheets (rows with gap IDs and answers)
+    - .pdf — PDF documents (text extracted)
+    - .json — Structured JSON data
+    
+    Can combine files and direct text input. All responses are merged and processed together.
+    
+    The run must have status `emails_sent` (i.e. waiting for SME input).
+    """
+    values = _require_state(run_id)
+    _require_status(values, "emails_sent", run_id=run_id)
+
+    all_responses: list[dict] = []
+
+    # Process uploaded files
+    if files:
+        for file in files:
+            try:
+                file_bytes = await file.read()
+                file_text = extract_text_from_file(file.filename, file_bytes)
+                file_responses = parse_responses_from_text(
+                    file_text,
+                    sme_email=sme_email,
+                    run_id=run_id
+                )
+                all_responses.extend(file_responses)
+            except FileHandlerError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to process file '{file.filename}': {str(e)}"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Error processing file '{file.filename}': {str(e)}"
+                )
+
+    # Process direct text input
+    if text and text.strip():
+        text_responses = parse_responses_from_text(
+            text,
+            sme_email=sme_email,
+            run_id=run_id
+        )
+        all_responses.extend(text_responses)
+
+    # Ensure we have at least some responses
+    if not all_responses:
+        raise HTTPException(
+            status_code=400,
+            detail="No gap responses found in files or text. Provide files with [REF:gap-id]: answer patterns or direct text input."
+        )
+
+    # Resume agent with all responses
+    await asyncio.to_thread(
+        _get_agent().invoke, Command(resume=all_responses), _config(run_id)
+    )
+    return _run_summary(run_id, _require_state(run_id))
+
 
 
 @app.post("/webhooks/email-reply", status_code=202, tags=["sme"])

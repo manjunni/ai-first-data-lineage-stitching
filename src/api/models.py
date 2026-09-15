@@ -112,6 +112,27 @@ class SmeResponsePayload(BaseModel):
     responses: list[dict]
 
 
+class SmeFileUploadPayload(BaseModel):
+    """
+    Multi-format file upload for SME gap-fixing responses.
+    
+    Supports .txt, .docx, .xlsx, .pdf, .json files.
+    Can be combined with direct text input.
+    """
+    text: Optional[str] = Field(
+        None,
+        description="Direct text input (alternative to files or in addition to files)"
+    )
+    sme_email: Optional[str] = Field(
+        None,
+        description="SME email address (required if not from email webhook)"
+    )
+    run_id: Optional[str] = Field(
+        None,
+        description="Run ID (optional, can be extracted from text)"
+    )
+
+
 class EmailWebhookPayload(BaseModel):
     """Inbound email payload from Azure Communication Services / SendGrid webhook."""
     sender: Optional[str] = Field(None, alias="from")

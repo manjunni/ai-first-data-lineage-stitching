@@ -9,7 +9,7 @@ from src.sme.question_generator import (
     generate_questions, _fill_template, _resolve_sme_email,
 )
 from src.sme.email_handler import (
-    send_sme_questions, parse_email_responses,
+    send_sme_questions, parse_email_responses, parse_responses_from_text,
     _format_plain, _format_html, _extract_ref_answers, _extract_run_id,
 )
 from src.sme.response_processor import (
@@ -332,6 +332,89 @@ class TestParseEmailResponses:
         assert len(parsed) == 2
         gap_ids = {p["gap_id"] for p in parsed}
         assert id1 in gap_ids and id2 in gap_ids
+
+
+class TestParseResponsesFromText:
+    """Tests for the generic parse_responses_from_text() function.
+    
+    This function works for ANY text source: email bodies, extracted file text, etc.
+    """
+
+    def test_extracts_structured_responses_from_text(self):
+        gap_id = str(uuid.uuid4())
+        text = f"[REF:{gap_id}]: The source is sales_db.customer_transactions"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com")
+        assert len(parsed) == 1
+        assert parsed[0]["gap_id"] == gap_id
+        assert "sales_db.customer_transactions" in parsed[0]["raw_answer"]
+
+    def test_multiple_refs_in_single_text(self):
+        from src.sme.email_handler import parse_responses_from_text
+        id1, id2 = str(uuid.uuid4()), str(uuid.uuid4())
+        text = f"[REF:{id1}]: Source is ADLS\n\n[REF:{id2}]: Target is Databricks"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com")
+        assert len(parsed) == 2
+        gap_ids = {p["gap_id"] for p in parsed}
+        assert id1 in gap_ids and id2 in gap_ids
+
+    def test_unstructured_text_returns_single_response_with_null_gap_id(self):
+        from src.sme.email_handler import parse_responses_from_text
+        text = "This is just narrative without structured markers"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com")
+        assert len(parsed) == 1
+        assert parsed[0]["gap_id"] is None
+        assert parsed[0]["raw_answer"] == text
+
+    def test_extracted_run_id_from_text(self):
+        from src.sme.email_handler import parse_responses_from_text
+        run_id = str(uuid.uuid4())
+        gap_id = str(uuid.uuid4())
+        # Use the proper format that the regex expects: [Lineage Agent] Run {run_id}
+        text = f"[Lineage Agent] Run {run_id}\n[REF:{gap_id}]: The answer is here"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com", run_id=None)
+        # run_id is extracted from text if not provided
+        assert parsed[0]["run_id"] == run_id
+
+    def test_provided_run_id_takes_precedence(self):
+        from src.sme.email_handler import parse_responses_from_text
+        run_id_in_text = str(uuid.uuid4())
+        provided_run_id = str(uuid.uuid4())
+        text = f"Run ID: {run_id_in_text}"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com", run_id=provided_run_id)
+        # Provided run_id is used
+        assert parsed[0]["run_id"] == provided_run_id
+
+    def test_preserves_multiline_answer_text(self):
+        from src.sme.email_handler import parse_responses_from_text
+        gap_id = str(uuid.uuid4())
+        text = f"""[REF:{gap_id}]: The source data comes from multiple places:
+1. ADLS raw zone
+2. SQL Server staging tables
+3. External APIs"""
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com")
+        assert "ADLS" in parsed[0]["raw_answer"]
+        assert "SQL Server" in parsed[0]["raw_answer"]
+
+    def test_works_with_extracted_file_content(self):
+        """Verify the function works with text extracted from files."""
+        from src.sme.email_handler import parse_responses_from_text
+        # Simulate .txt file content
+        file_content = """Subject: Gap Responses
+
+[REF:gap-001]: The source is sales_db.customer_transactions
+
+[REF:gap-002]: Data flows to Databricks in the bronze layer as adls://lakehouse/bronze/customer"""
+        parsed = parse_responses_from_text(file_content, sme_email="sme@corp.com", run_id="run-123")
+        assert len(parsed) == 2
+        assert parsed[0]["sme_email"] == "sme@corp.com"
+        assert parsed[0]["run_id"] == "run-123"
+
+    def test_raw_text_preserved_in_response(self):
+        from src.sme.email_handler import parse_responses_from_text
+        gap_id = str(uuid.uuid4())
+        text = f"[REF:{gap_id}]: answer"
+        parsed = parse_responses_from_text(text, sme_email="sme@corp.com")
+        assert parsed[0]["raw_text"] == text
 
 
 # ===========================================================================

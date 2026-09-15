@@ -7,9 +7,10 @@ from typing import Optional
 from config.settings import settings
 
 # Regex to pull structured answers out of an SME reply body
-# Matches: [REF:uuid] answer text  (one per line or until next [REF:])
+# Matches: [REF:gap-id] answer text  (one per line or until next [REF:])
+# Supports both UUIDs and simple IDs like "gap-001", "gap_123", etc.
 _REF_ANSWER_RE = re.compile(
-    r"\[REF:([a-f0-9\-]{36})\]\s*:?\s*(.+?)(?=\[REF:|$)",
+    r"\[REF:([^\]]+)\]\s*:?\s*(.+?)(?=\[REF:|$)",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -99,6 +100,58 @@ def send_sme_questions(questions: list[dict]) -> list[dict]:
 # Receiving / parsing
 # ---------------------------------------------------------------------------
 
+def parse_responses_from_text(
+    text: str,
+    sme_email: Optional[str] = None,
+    run_id: Optional[str] = None,
+) -> list[dict]:
+    """
+    Parse gap responses from plain text (email body, file content, etc).
+
+    Extracts [REF:gap-id]: answer patterns and returns list of response dicts.
+    Works for ANY source: email body, .txt file, .docx extracted text, etc.
+
+    Args:
+        text: The text content to parse for gap responses
+        sme_email: The SME's email address (optional, for file uploads)
+        run_id: The lineage run ID (optional, will be extracted from text if not provided)
+
+    Returns:
+        List of response dicts with gap_id, sme_email, run_id, raw_answer, raw_text
+    """
+    # Extract run_id from text if not provided
+    if not run_id:
+        run_id = _extract_run_id("", text)
+
+    # Extract structured answers via [REF:gap_id]: answer pattern
+    ref_answers = _extract_ref_answers(text)
+
+    if ref_answers:
+        return [
+            {
+                "gap_id": gap_id,
+                "sme_email": sme_email,
+                "run_id": run_id,
+                "raw_answer": raw_answer.strip(),
+                "raw_text": text,
+            }
+            for gap_id, raw_answer in ref_answers.items()
+        ]
+    else:
+        # No structured markers — return the full body against no specific gap_id
+        # The response processor will attempt to match by context
+        return [
+            {
+                "gap_id": None,
+                "sme_email": sme_email,
+                "run_id": run_id,
+                "raw_answer": text.strip(),
+                "raw_text": text,
+            }
+        ]
+
+
+
 def parse_email_responses(raw_responses: list[dict]) -> list[dict]:
     """
     Parse inbound SME email replies into structured response objects.
@@ -111,6 +164,7 @@ def parse_email_responses(raw_responses: list[dict]) -> list[dict]:
     Returns a list of response dicts with:
       gap_id, sme_email, run_id, raw_answer, raw_text
     """
+
     parsed: list[dict] = []
 
     for email in raw_responses:
@@ -120,28 +174,9 @@ def parse_email_responses(raw_responses: list[dict]) -> list[dict]:
 
         run_id = _extract_run_id(subject, body)
 
-        # Extract structured answers via [REF:gap_id]: answer pattern
-        ref_answers = _extract_ref_answers(body)
-
-        if ref_answers:
-            for gap_id, raw_answer in ref_answers.items():
-                parsed.append({
-                    "gap_id":     gap_id,
-                    "sme_email":  sme_email,
-                    "run_id":     run_id,
-                    "raw_answer": raw_answer.strip(),
-                    "raw_text":   body,
-                })
-        else:
-            # No structured markers — return the full body against no specific gap_id
-            # The response processor will attempt to match by context
-            parsed.append({
-                "gap_id":     None,
-                "sme_email":  sme_email,
-                "run_id":     run_id,
-                "raw_answer": body.strip(),
-                "raw_text":   body,
-            })
+        # Use generic text parser
+        responses = parse_responses_from_text(body, sme_email, run_id)
+        parsed.extend(responses)
 
     return parsed
 

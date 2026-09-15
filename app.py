@@ -21,6 +21,8 @@ from src.ui.components import (
     render_workflow_progress, section_header, metric_row,
     empty_state, confidence_badge, gap_type_badge, PAGE_DESCRIPTIONS,
 )
+from src.sme.email_handler import parse_responses_from_text
+from src.sme.file_handlers import FileHandlerError, extract_text_from_file
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -165,8 +167,8 @@ def _apply_raise_styles() -> None:
 
         /* ── Inputs ── */
         .stTextInput input, .stTextArea textarea, .stSelectbox select {
-            background-color: #1e123a !important;
-            color: #e8e0ff !important;
+            background-color: #ffffff !important;
+            color: #333333 !important;
             border-color: #4a3587 !important;
             border-radius: 4px !important;
         }
@@ -669,7 +671,7 @@ def page_gaps_and_questions() -> None:
 
 def page_submit_responses() -> None:
     section_header("📧 Submit SME Responses",
-                   "Paste email replies to resume the lineage run")
+                   "Paste email replies or upload response files to resume the lineage run")
 
     run_id = _require_run()
     if not run_id:
@@ -706,18 +708,53 @@ def page_submit_responses() -> None:
         placeholder="e.g. Manjusha Unnikrishnan",
     )
 
-    # Render each question with an inline answer field
+    upload_answers = {}
+    upload_errors = []
+
+    # Each question accepts either typed text or an uploaded document. The
+    # extracted document text is associated with this question's gap ID.
     for i, q in enumerate(questions):
         gap_id = q["gap_id"]
         answer_key = f"answer_{gap_id}"
         st.markdown(f"**Q{i + 1} — {gap_type_badge(q['gap_type'])}**")
         st.markdown(f"> {q['question']}")
         st.text_input(
-            f"Your answer",
-            key=answer_key,
-            placeholder="Type your answer here…",
-            label_visibility="collapsed",
+                    "Your answer",
+                    key=answer_key,
+                    placeholder="Type your answer here…",
+                    label_visibility="collapsed",
+                )
+        uploaded = st.file_uploader(
+            "Upload a response document (optional)",
+            type=["txt", "docx", "xlsx", "pdf", "json"],
+            key=f"response_file_{gap_id}",
+            help="Upload a document containing the answer to this question.",
         )
+        if uploaded is not None:
+            try:
+                extracted_text = extract_text_from_file(
+                    uploaded.name, uploaded.getvalue()
+                ).strip()
+                parsed = parse_responses_from_text(
+                    extracted_text,
+                    sme_email=responder_name.strip() or "analyst@ui",
+                    run_id=run_id,
+                )
+                matching = [
+                    item["raw_answer"].strip()
+                    for item in parsed
+                    if item.get("gap_id") == gap_id and item.get("raw_answer", "").strip()
+                ]
+                upload_answers[gap_id] = "\n".join(matching) or extracted_text
+                if not upload_answers[gap_id]:
+                    upload_errors.append(f"{uploaded.name}: no answer text found")
+                else:
+                    st.caption(f"📄 Uploaded answer ready: {uploaded.name}")
+            except (FileHandlerError, ValueError) as exc:
+                upload_errors.append(f"{uploaded.name}: {exc}")
+            except Exception as exc:
+                upload_errors.append(f"{uploaded.name}: {exc}")
+        
         st.divider()
 
     col_submit, col_clear = st.columns([2, 1])
@@ -725,13 +762,25 @@ def page_submit_responses() -> None:
     if col_clear.button("🗑️ Clear All", use_container_width=True):
         for q in questions:
             st.session_state.pop(f"answer_{q['gap_id']}", None)
+            st.session_state.pop(f"response_file_{q['gap_id']}", None)
         st.rerun()
 
     if submit:
-        # Build [REF:gap_id]: answer reply body from inline inputs
+        for error in upload_errors:
+            st.error(error)
+        if upload_errors:
+            st.error("Fix the uploaded document errors before submitting.")
+            return
+
+        # Build [REF:gap_id] answers from either typed text or uploaded files.
         lines = []
         for q in questions:
             answer = st.session_state.get(f"answer_{q['gap_id']}", "").strip()
+            uploaded_answer = upload_answers.get(q["gap_id"], "")
+            if answer and uploaded_answer:
+                answer = f"{answer}\n{uploaded_answer}"
+            else:
+                answer = answer or uploaded_answer
             if answer:
                 lines.append(f"[REF:{q['gap_id']}]: {answer}")
 
