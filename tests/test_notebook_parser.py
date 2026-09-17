@@ -113,6 +113,29 @@ def test_filter_in_transformation():
     assert "deduplicated" in transform
 
 
+def test_select_and_with_column_extract_column_mappings():
+    frag = _parse(
+        ("code", 'df = spark.read.table("bronze.customers")'),
+        ("code", 'clean = df.select("customer_id", col("first_name").alias("full_name"))'),
+        ("code", 'clean = clean.withColumn("email", lower(col("email")))'),
+        ("code", 'clean.write.saveAsTable("silver.customers_clean")'),
+    )
+    mappings = frag.edges[0].column_mappings
+    assert any(
+        m.source_column == "customer_id" and m.target_column == "customer_id"
+        for m in mappings
+    )
+    assert any(
+        m.source_column == "first_name" and m.target_column == "full_name"
+        for m in mappings
+    )
+    assert any(
+        m.source_column == "email" and m.target_column == "email"
+        and "lower" in (m.transformation or "")
+        for m in mappings
+    )
+
+
 # ---------------------------------------------------------------------------
 # %sql magic cells
 # ---------------------------------------------------------------------------

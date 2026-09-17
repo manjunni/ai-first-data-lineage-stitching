@@ -104,6 +104,23 @@ def test_transformation_direct_copy():
     assert frag.edges[0].transformation == "direct copy"
 
 
+def test_column_mappings_include_direct_and_derived_columns():
+    frag = _parse(
+        "INSERT INTO gold.customer_summary "
+        "SELECT customer_id, SUM(amount) AS total_amount "
+        "FROM silver.orders GROUP BY customer_id"
+    )
+    mappings = frag.edges[0].column_mappings
+    assert {(m.source_column, m.target_column) for m in mappings} == {
+        ("customer_id", "customer_id"),
+        ("amount", "total_amount"),
+    }
+    derived = next(m for m in mappings if m.target_column == "total_amount")
+    assert derived.transformation == "SUM(amount)"
+    assert derived.confidence == 0.90
+    assert derived.confidence_level == ConfidenceLevel.HIGH
+
+
 # ---------------------------------------------------------------------------
 # System type inference
 # ---------------------------------------------------------------------------

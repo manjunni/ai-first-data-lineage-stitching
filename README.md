@@ -592,6 +592,39 @@ The Phase 4 implementation adds focused UI client coverage; the full test suite 
 - Field mapping templates for Excel/CSV
 - Video walkthrough of file upload workflow
 
+### Column-Level Lineage
+
+The lineage graph supports optional column-level mappings attached to each
+table-level edge. Each mapping includes:
+
+- source and target column names
+- derived-column transformation logic where available
+- independent confidence score and confidence level
+- extraction evidence and SME approval metadata
+
+The SQL parser extracts direct and derived mappings with `sqlglot`. PySpark
+notebook and script parsing also extracts common DataFrame mappings from
+`select`, `withColumn`, and column alias expressions, including derived-column
+transformation text. The structured LLM fallback can return mappings for
+artifacts where deterministic extraction is unavailable. Existing artifacts
+without mappings remain valid table-level lineage.
+
+In the Streamlit **Lineage Graph** page, the **Table & Column Lineage** tab
+contains one expandable lineage section. Each table relationship is shown as
+an expandable item; opening it reveals source-to-target mappings,
+transformation expressions, evidence, and column-level confidence. Table and
+column confidence are scored independently.
+
+An expanded relationship renders a tree such as:
+
+```text
+customer_orders
+├── customer_id ← customers_clean.customer_id
+├── full_name ← CONCAT(first_name, last_name)
+├── email ← customers_clean.email
+└── amount ← orders_clean.amount
+```
+
 ---
 
 ## Architecture Diagram
