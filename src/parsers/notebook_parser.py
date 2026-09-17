@@ -17,7 +17,7 @@ from src.parsers.sql_parser import (
     _normalise_llm_node,
 )
 from src.graph.models import (
-    LineageFragment, LineageNode, LineageEdge,
+    ColumnMapping, LineageFragment, LineageNode, LineageEdge,
     SystemType, ConfidenceLevel,
 )
 from config.settings import settings
@@ -80,13 +80,19 @@ class DataFlowTracker:
     reads:   dict[str, list[str]]  = field(default_factory=dict)  # var → [source paths]
     derives: dict[str, str]        = field(default_factory=dict)  # child → parent var
     ops:     dict[str, list[str]]  = field(default_factory=dict)  # var → [operations applied]
+    mappings: dict[str, list[ColumnMapping]] = field(default_factory=dict)
 
     def record_read(self, var: str, paths: list[str]) -> None:
         self.reads[var] = paths
 
-    def record_derive(self, child: str, parent: str, operations: list[str]) -> None:
+    def record_derive(self, child: str, parent: str, operations: list[str], line: str = "") -> None:
+        if child == parent:
+            self.ops.setdefault(child, []).extend(operations)
+            self.mappings.setdefault(child, []).extend(_extract_dataframe_mappings(line))
+            return
         self.derives[child] = parent
         self.ops[child] = operations
+        self.mappings[child] = _extract_dataframe_mappings(line)
 
     def get_sources(self, var: str, _seen: frozenset[str] = frozenset()) -> list[str]:
         if var in _seen:
@@ -107,6 +113,13 @@ class DataFlowTracker:
         if parent:
             ops = self.get_operations(parent, _seen | {var}) + ops
         return ops
+
+    def get_mappings(self, var: str, _seen: frozenset[str] = frozenset()) -> list[ColumnMapping]:
+        if var in _seen:
+            return []
+        parent = self.derives.get(var)
+        inherited = self.get_mappings(parent, _seen | {var}) if parent else []
+        return inherited + list(self.mappings.get(var, []))
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +242,7 @@ def _process_derive_assignment(line: str, tracker: DataFlowTracker) -> None:
         return
     child, parent = m.group(1), m.group(2)
     ops = [m2.group("op") for m2 in _DERIVE_OP.finditer(line)]
-    tracker.record_derive(child, parent, ops)
+    tracker.record_derive(child, parent, ops, line)
 
 
 def _process_write(
@@ -258,6 +271,7 @@ def _process_write(
     target_paths = _extract_write_paths(line)
     source_paths = tracker.get_sources(write_var)
     ops = tracker.get_operations(write_var)
+    mappings = tracker.get_mappings(write_var)
     transform = _summarise_ops(ops) if ops else "spark transformation"
 
     for tgt_path in target_paths:
@@ -274,7 +288,51 @@ def _process_write(
                 confidence=0.85,
                 confidence_level=ConfidenceLevel.HIGH,
                 evidence=f"parsed from {filename} via regex",
+                column_mappings=mappings,
             ))
+
+
+def _extract_dataframe_mappings(line: str) -> list[ColumnMapping]:
+    """Extract mappings from common PySpark select/withColumn expressions."""
+    mappings: list[ColumnMapping] = []
+    evidence = "parsed from PySpark DataFrame API"
+
+    for match in re.finditer(r'\.withColumn\s*\(\s*["\']([^"\']+)["\']\s*,\s*(.*)\)\s*$', line):
+        target, expression = match.groups()
+        sources = re.findall(r'(?:col|column)\s*\(\s*["\']([^"\']+)["\']', expression)
+        sources = sources or re.findall(r'\b([A-Za-z_]\w*)\b', expression)
+        sources = [s for s in dict.fromkeys(sources) if s not in {"lit", "when", "otherwise"}]
+        for source in sources:
+            mappings.append(ColumnMapping(
+                source_column=source,
+                target_column=target,
+                transformation=expression.strip(),
+                confidence=0.85,
+                confidence_level=ConfidenceLevel.HIGH,
+                evidence=evidence,
+            ))
+
+    select_match = re.search(r'\.select\s*\((.*)\)', line)
+    if select_match:
+        for item in re.split(r',\s*(?![^()]*\))', select_match.group(1)):
+            item = item.strip()
+            alias = re.search(r'\.alias\s*\(\s*["\']([^"\']+)["\']', item)
+            target = alias.group(1) if alias else None
+            source_match = re.search(r'(?:col\s*\(\s*)?["\']?([A-Za-z_]\w*)["\']?\s*\)?', item)
+            if not source_match:
+                continue
+            source = source_match.group(1)
+            target = target or source
+            transformation = item if alias else None
+            mappings.append(ColumnMapping(
+                source_column=source,
+                target_column=target,
+                transformation=transformation,
+                confidence=0.85,
+                confidence_level=ConfidenceLevel.HIGH,
+                evidence=evidence,
+            ))
+    return mappings
 
 
 def _absorb_sql(
@@ -455,6 +513,8 @@ Return ONLY valid JSON — no markdown, no explanation:
 }
 Use system "adls" for abfss://, wasbs://, or dbfs:/mnt/... paths.
 Use "databricks" for Unity Catalog (3-part) or Hive Metastore table names.
+For DataFrame select/withColumn operations, include optional "column_mappings":
+[{"source_column": "...", "target_column": "...", "transformation": "..."}].
 If you find nothing, return {"relationships": []}."""
 
 
@@ -501,6 +561,18 @@ def _parse_with_llm_nb(content: str, filename: str) -> LineageFragment:
             confidence=0.60,
             confidence_level=ConfidenceLevel.MEDIUM,
             evidence=f"LLM fallback from {filename}",
+            column_mappings=[
+                ColumnMapping(
+                    source_column=m["source_column"],
+                    target_column=m["target_column"],
+                    transformation=m.get("transformation"),
+                    confidence=0.60,
+                    confidence_level=ConfidenceLevel.MEDIUM,
+                    evidence=f"LLM fallback from {filename}",
+                )
+                for m in rel.get("column_mappings", [])
+                if m.get("source_column") and m.get("target_column")
+            ],
         ))
 
     return fragment

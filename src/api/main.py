@@ -240,6 +240,18 @@ def get_lineage(run_id: str):
             transformation=e.transformation, system_boundary=e.system_boundary,
             confidence=e.confidence, confidence_level=e.confidence_level.value,
             evidence=e.evidence, sme_approved_by=e.sme_approved_by,
+            column_mappings=[
+                {
+                    "source_column": m.source_column,
+                    "target_column": m.target_column,
+                    "transformation": m.transformation,
+                    "confidence": m.confidence,
+                    "confidence_level": m.confidence_level.value,
+                    "evidence": m.evidence,
+                    "sme_approved_by": m.sme_approved_by,
+                }
+                for m in e.column_mappings
+            ],
         )
         for e in graph.edges
     ]

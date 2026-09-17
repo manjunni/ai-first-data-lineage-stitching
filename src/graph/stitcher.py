@@ -117,8 +117,15 @@ def stitch_fragments(fragments: list[LineageFragment]) -> LineageGraph:
             canonical = edge.model_copy(update={"source_id": src_id, "target_id": tgt_id})
 
             existing = best_edge.get(key)
-            if existing is None or canonical.confidence > existing.confidence:
+            if existing is None:
                 best_edge[key] = canonical
+            else:
+                merged = _merge_column_mappings([existing, canonical])
+                if canonical.confidence > existing.confidence:
+                    canonical.column_mappings = merged
+                    best_edge[key] = canonical
+                else:
+                    existing.column_mappings = merged
 
     graph.edges = list(best_edge.values())
 
@@ -148,6 +155,17 @@ def _annotate_system_boundaries(graph: LineageGraph) -> None:
             edge.system_boundary = f"{src.system.value}→{tgt.system.value}"
         else:
             edge.system_boundary = None
+
+
+def _merge_column_mappings(edges: list[LineageEdge]) -> list:
+    """Keep the strongest evidence for each source/target column pair."""
+    best = {}
+    for edge in edges:
+        for mapping in edge.column_mappings:
+            key = (mapping.source_column, mapping.target_column)
+            if key not in best or mapping.confidence > best[key].confidence:
+                best[key] = mapping
+    return list(best.values())
 
 
 def to_networkx(graph: LineageGraph) -> nx.DiGraph:

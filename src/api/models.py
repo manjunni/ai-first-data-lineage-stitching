@@ -45,6 +45,16 @@ class NodeResponse(BaseModel):
     owner: Optional[str]
 
 
+class ColumnMappingResponse(BaseModel):
+    source_column: str
+    target_column: str
+    transformation: Optional[str]
+    confidence: float
+    confidence_level: str
+    evidence: Optional[str]
+    sme_approved_by: Optional[str]
+
+
 class EdgeResponse(BaseModel):
     id: str
     source_id: str
@@ -55,6 +65,7 @@ class EdgeResponse(BaseModel):
     confidence_level: str
     evidence: Optional[str]
     sme_approved_by: Optional[str]
+    column_mappings: list[ColumnMappingResponse] = Field(default_factory=list)
 
 
 class LineageGraphResponse(BaseModel):

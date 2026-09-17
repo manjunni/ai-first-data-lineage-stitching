@@ -31,6 +31,16 @@ class LineageNode(BaseModel):
     owner: Optional[str] = None
 
 
+class ColumnMapping(BaseModel):
+    source_column: str
+    target_column: str
+    transformation: Optional[str] = None
+    confidence: float = 0.0
+    confidence_level: ConfidenceLevel = ConfidenceLevel.LOW
+    evidence: Optional[str] = None
+    sme_approved_by: Optional[str] = None
+
+
 class LineageEdge(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     source_id: str
@@ -41,6 +51,7 @@ class LineageEdge(BaseModel):
     confidence_level: ConfidenceLevel = ConfidenceLevel.LOW
     evidence: Optional[str] = None         # artifact name / SME name
     sme_approved_by: Optional[str] = None
+    column_mappings: list[ColumnMapping] = Field(default_factory=list)
     audit_trail: list[dict] = Field(default_factory=list)
 
 

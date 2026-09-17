@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from src.parsers.base_parser import BaseParser
 from src.graph.models import (
     LineageFragment, LineageNode, LineageEdge,
-    SystemType, ConfidenceLevel,
+    ColumnMapping, SystemType, ConfidenceLevel,
 )
 from config.settings import settings
 
@@ -66,6 +66,7 @@ def _parse_with_sqlglot(sql: str, filename: str) -> LineageFragment:
         targets = _extract_targets(stmt)
         sources = _extract_sources(stmt)
         transform = _extract_transformation(stmt)
+        mappings = _extract_column_mappings(stmt, filename)
 
         for tgt_info in targets:
             tgt_node = _get_or_create_node(tgt_info, node_registry, fragment)
@@ -78,9 +79,42 @@ def _parse_with_sqlglot(sql: str, filename: str) -> LineageFragment:
                     confidence=0.90,
                     confidence_level=ConfidenceLevel.HIGH,
                     evidence=f"parsed from {filename} via sqlglot",
+                    column_mappings=mappings,
                 ))
 
     return fragment
+
+
+def _extract_column_mappings(stmt: exp.Expression, filename: str) -> list[ColumnMapping]:
+    """Extract source-to-target mappings from a SELECT projection."""
+    select = stmt.find(exp.Select)
+    if not select:
+        return []
+    mappings: list[ColumnMapping] = []
+    for projection in select.expressions:
+        if isinstance(projection, exp.Star):
+            continue
+        target = projection.alias_or_name
+        if not target:
+            continue
+        expression = projection.this if isinstance(projection, exp.Alias) else projection
+        columns = list(expression.find_all(exp.Column))
+        if not columns:
+            continue
+        transformation = None
+        if isinstance(projection, exp.Alias) and not isinstance(expression, exp.Column):
+            transformation = expression.sql(dialect="spark")
+        for column in columns:
+            source = column.sql(dialect="spark")
+            mappings.append(ColumnMapping(
+                source_column=source,
+                target_column=target,
+                transformation=transformation,
+                confidence=0.90,
+                confidence_level=ConfidenceLevel.HIGH,
+                evidence=f"parsed from {filename} via sqlglot",
+            ))
+    return mappings
 
 
 def _try_parse(sql: str) -> list[exp.Expression] | None:
@@ -262,7 +296,11 @@ Return ONLY valid JSON — no markdown, no explanation — in this exact shape:
     {
       "source": {"name": "table_name", "full_path": "catalog.schema.table", "system": "databricks|adls|sql|unknown"},
       "target": {"name": "table_name", "full_path": "catalog.schema.table", "system": "databricks|adls|sql|unknown"},
-      "transformation": "brief description of what the SQL does"
+      "transformation": "brief description of what the SQL does",
+      "column_mappings": [
+        {"source_column": "source.col", "target_column": "target_col",
+         "transformation": "optional expression"}
+      ]
     }
   ]
 }
@@ -305,6 +343,18 @@ def _parse_with_llm(sql: str, filename: str) -> LineageFragment:
             confidence=0.60,
             confidence_level=ConfidenceLevel.MEDIUM,
             evidence=f"LLM fallback from {filename}",
+            column_mappings=[
+                ColumnMapping(
+                    source_column=str(m.get("source_column", "")),
+                    target_column=str(m.get("target_column", "")),
+                    transformation=m.get("transformation"),
+                    confidence=0.60,
+                    confidence_level=ConfidenceLevel.MEDIUM,
+                    evidence=f"LLM fallback from {filename}",
+                )
+                for m in rel.get("column_mappings", [])
+                if m.get("source_column") and m.get("target_column")
+            ],
         ))
 
     return fragment

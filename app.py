@@ -490,9 +490,12 @@ def page_lineage_graph() -> None:
     render_system_legend()
     st.markdown("")
 
-    # Diagram
-    tab_mermaid, tab_dot, tab_nodes, tab_edges = st.tabs([
-        "📊 Mermaid Diagram", "🔵 Graphviz DOT", "🗂️ Nodes Table", "↔️ Edges Table"
+    lineage = _api_call(client().get_lineage, run_id)
+
+    # Diagram and data views
+    tab_mermaid, tab_dot, tab_nodes, tab_lineage = st.tabs([
+        "📊 Table View", "🔵 Graphviz DOT", "🗂️ Tables",
+        "↔️ Table & Column Lineage",
     ])
 
     with tab_mermaid:
@@ -518,7 +521,6 @@ def page_lineage_graph() -> None:
             empty_state("⌛", "Not yet available")
 
     with tab_nodes:
-        lineage = _api_call(client().get_lineage, run_id)
         if lineage and lineage.get("nodes"):
             def _display_path(n: dict) -> str:
                 # For adf:// placeholder nodes, the actual storage path is
@@ -541,32 +543,58 @@ def page_lineage_graph() -> None:
         else:
             empty_state("🗂️", "No nodes yet")
 
-    with tab_edges:
+    with tab_lineage:
         if lineage and lineage.get("edges"):
-            df = pd.DataFrame([
-                {
-                    "Source":        _node_name(lineage, e["source_id"]),
-                    "→ Target":      _node_name(lineage, e["target_id"]),
-                    "Transformation":e.get("transformation") or "—",
-                    "Confidence":    f'{e["confidence"]:.0%}',
-                    "Level":         e.get("confidence_level", "—"),
-                    "Boundary":      e.get("system_boundary") or "—",
-                    "SME Approved":  e.get("sme_approved_by") or "—",
-                }
-                for e in lineage["edges"]
-            ])
-
-            def colour_level(val):
-                colours = {"confirmed": "#e3f2fd", "high": "#e8f5e9",
-                           "medium": "#fff8e1", "low": "#ffebee"}
-                return f"background-color:{colours.get(val, '')}"
-
-            st.dataframe(
-                df.style.map(colour_level, subset=["Level"]),
-                use_container_width=True, hide_index=True,
+            edges = lineage["edges"]
+            st.caption(
+                "Expand a table relationship to inspect its source-to-target "
+                "column mappings."
             )
+            for edge in edges:
+                source_name = _node_name(lineage, edge["source_id"])
+                target_name = _node_name(lineage, edge["target_id"])
+                mappings = edge.get("column_mappings", [])
+                with st.expander(f"📦 {target_name}  ←  {source_name}", expanded=False):
+                    st.markdown(
+                        f"**Table lineage:** `{source_name}` → `{target_name}`  \n"
+                        f"**Transformation:** {edge.get('transformation') or '—'}  \n"
+                        f"**Table confidence:** {edge.get('confidence', 0):.0%} "
+                        f"({edge.get('confidence_level', 'low')})"
+                    )
+                    if not mappings:
+                        st.info("No column-level mappings were extracted for this relationship.")
+                        continue
+                    tree_lines = []
+                    for index, mapping in enumerate(mappings):
+                        branch = "└──" if index == len(mappings) - 1 else "├──"
+                        source_column = mapping["source_column"]
+                        source_display = (
+                            mapping.get("transformation")
+                            or (f"{source_name}.{source_column}"
+                                if "." not in source_column else source_column)
+                        )
+                        tree_lines.append(
+                            f"{branch} {mapping['target_column']} ← {source_display}"
+                        )
+                    st.code(f"{target_name}\n" + "\n".join(tree_lines), language="text")
+                    st.dataframe(
+                        pd.DataFrame([
+                            {
+                                "Source column": mapping["source_column"],
+                                "Target column": mapping["target_column"],
+                                "Transformation": mapping.get("transformation")
+                                or "direct mapping",
+                                "Confidence": f'{mapping.get("confidence", 0):.0%}',
+                                "Level": mapping.get("confidence_level", "low"),
+                                "Evidence": mapping.get("evidence") or "—",
+                            }
+                            for mapping in mappings
+                        ]),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
         else:
-            empty_state("↔️", "No edges yet")
+            empty_state("↔️", "No table relationships available")
 
 
 def _node_name(lineage: dict, node_id: str) -> str:
