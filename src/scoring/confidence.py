@@ -67,8 +67,14 @@ def graph_confidence_summary(
     sme_confirmed = 0
     cross_system = 0
     unresolved_adf = 0
+    pending_review = 0
+    rejected_edges = 0
 
     for edge in graph.edges:
+        if edge.review_status == "rejected":
+            rejected_edges += 1
+        elif edge.review_status == "pending":
+            pending_review += 1
         level_counts[edge.confidence_level.value] += 1
         if edge.sme_approved_by:
             sme_confirmed += 1
@@ -89,6 +95,8 @@ def graph_confidence_summary(
         "sme_confirmed":      sme_confirmed,
         "cross_system_edges": cross_system,
         "unresolved_adf_edges": unresolved_adf,
+        "pending_review": pending_review,
+        "rejected_edges": rejected_edges,
     }
 
 

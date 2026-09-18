@@ -609,11 +609,14 @@ transformation text. The structured LLM fallback can return mappings for
 artifacts where deterministic extraction is unavailable. Existing artifacts
 without mappings remain valid table-level lineage.
 
-In the Streamlit **Lineage Graph** page, the **Table & Column Lineage** tab
-contains one expandable lineage section. Each table relationship is shown as
-an expandable item; opening it reveals source-to-target mappings,
-transformation expressions, evidence, and column-level confidence. Table and
-column confidence are scored independently.
+In the Streamlit **Lineage Graph** page, the **Tables and Datasets** tab lists
+the available table and dataset nodes. The **Table & Column Lineage** tab
+contains one table-formatted lineage section with columns for target table,
+source table, system boundary, confidence, and mapping count. Each table row
+is expandable; opening it reveals source-to-target mappings,
+the system boundary (for example, `ADLS → Databricks`), transformation
+expressions, evidence, and column-level confidence. Table and column
+confidence are scored independently.
 
 An expanded relationship renders a tree such as:
 
@@ -624,6 +627,15 @@ customer_orders
 ├── email ← customers_clean.email
 └── amount ← orders_clean.amount
 ```
+
+### Confidence Review
+
+The **Confidence** page provides owner review before lineage is approved or
+published. Each edge can be expanded to inspect source and target paths,
+system boundary, transformation, parser/LLM evidence, confidence, and any
+column mappings. Owners can approve an edge, which records SME confirmation
+and sets confidence to 95%, or reject it with a required reason. Rejected
+edges are excluded from catalog publishing and are recorded in the audit trail.
 
 ---
 

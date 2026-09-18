@@ -89,6 +89,19 @@ class LineageApiClient:
     def get_confidence(self, run_id: str) -> Optional[dict]:
         return self._get(f"/runs/{run_id}/confidence")
 
+    def review_lineage_edge(
+        self,
+        run_id: str,
+        edge_id: str,
+        decision: str,
+        reviewer: str,
+        reason: str = "",
+    ) -> Optional[dict]:
+        return self._post(
+            f"/runs/{run_id}/lineage/edges/{edge_id}/review",
+            {"decision": decision, "reviewer": reviewer, "reason": reason or None},
+        )
+
     # ------------------------------------------------------------------
     # Audit
     # ------------------------------------------------------------------

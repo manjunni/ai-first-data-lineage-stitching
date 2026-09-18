@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
@@ -17,6 +18,7 @@ from src.api.models import (
     QuestionListResponse, QuestionResponse,
     SmeResponsePayload, SmeFileUploadPayload, EmailWebhookPayload,
     ConfidenceSummaryResponse,
+    LineageReviewRequest, LineageReviewResponse,
     VisualsResponse,
     PublishRequest, PublishResponse,
     HealthResponse,
@@ -28,6 +30,7 @@ from src.visualization.diagram_generator import (
 )
 from src.sme.email_handler import parse_email_responses, parse_responses_from_text
 from src.sme.file_handlers import extract_text_from_file, FileHandlerError
+from src.graph.models import ConfidenceLevel
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -252,12 +255,71 @@ def get_lineage(run_id: str):
                 }
                 for m in e.column_mappings
             ],
+            review_status=e.review_status,
+            reviewed_by=e.reviewed_by,
+            reviewed_at=e.reviewed_at,
+            review_reason=e.review_reason,
         )
         for e in graph.edges
     ]
     return LineageGraphResponse(
         run_id=run_id, node_count=len(nodes), edge_count=len(edges),
         nodes=nodes, edges=edges,
+    )
+
+
+@app.post(
+    "/runs/{run_id}/lineage/edges/{edge_id}/review",
+    response_model=LineageReviewResponse,
+    tags=["lineage"],
+)
+def review_lineage_edge(run_id: str, edge_id: str, payload: LineageReviewRequest):
+    """Persist an owner approval or rejection for one lineage edge."""
+    values = _require_state(run_id)
+    graph = values.get("lineage_graph")
+    if not graph:
+        raise HTTPException(status_code=404, detail="Lineage graph not yet built")
+    edge = next((item for item in graph.edges if item.id == edge_id), None)
+    if not edge:
+        raise HTTPException(status_code=404, detail=f"Lineage edge '{edge_id}' not found")
+
+    decision = payload.decision.strip().lower()
+    if decision not in {"approve", "reject"}:
+        raise HTTPException(status_code=422, detail="Decision must be 'approve' or 'reject'")
+    if decision == "reject" and (not payload.reason or not payload.reason.strip()):
+        raise HTTPException(status_code=422, detail="A rejection reason is required")
+
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    edge.review_status = "approved" if decision == "approve" else "rejected"
+    edge.reviewed_by = payload.reviewer
+    edge.reviewed_at = reviewed_at
+    edge.review_reason = payload.reason
+    if decision == "approve":
+        edge.sme_approved_by = payload.reviewer
+        edge.confidence = 0.95
+        edge.confidence_level = ConfidenceLevel.CONFIRMED
+
+    audit = {
+        "step": "lineage_review",
+        "edge_id": edge_id,
+        "decision": decision,
+        "reviewer": payload.reviewer,
+        "reason": payload.reason,
+        "ts": reviewed_at,
+    }
+    _get_agent().update_state(
+        _config(run_id),
+        {"lineage_graph": graph, "audit_trail": [audit]},
+    )
+    return LineageReviewResponse(
+        run_id=run_id,
+        edge_id=edge_id,
+        review_status=edge.review_status,
+        reviewed_by=edge.reviewed_by,
+        reviewed_at=reviewed_at,
+        review_reason=edge.review_reason,
+        confidence=edge.confidence,
+        confidence_level=edge.confidence_level.value,
     )
 
 

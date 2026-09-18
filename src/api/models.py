@@ -66,6 +66,10 @@ class EdgeResponse(BaseModel):
     evidence: Optional[str]
     sme_approved_by: Optional[str]
     column_mappings: list[ColumnMappingResponse] = Field(default_factory=list)
+    review_status: str = "pending"
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    review_reason: Optional[str] = None
 
 
 class LineageGraphResponse(BaseModel):
@@ -171,6 +175,25 @@ class ConfidenceSummaryResponse(BaseModel):
     sme_confirmed: int
     cross_system_edges: int
     unresolved_adf_edges: int
+    pending_review: int = 0
+    rejected_edges: int = 0
+
+
+class LineageReviewRequest(BaseModel):
+    decision: str = Field(description="approve or reject")
+    reviewer: str = Field(min_length=1)
+    reason: Optional[str] = None
+
+
+class LineageReviewResponse(BaseModel):
+    run_id: str
+    edge_id: str
+    review_status: str
+    reviewed_by: str
+    reviewed_at: str
+    review_reason: Optional[str]
+    confidence: float
+    confidence_level: str
 
 
 # ---------------------------------------------------------------------------
