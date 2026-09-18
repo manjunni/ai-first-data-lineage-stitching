@@ -15,7 +15,7 @@ from src.catalog.publisher import (
 from src.graph.stitcher import stitch_fragments
 from src.graph.models import (
     LineageFragment, LineageNode, LineageEdge,
-    LineageGraph, SystemType, ConfidenceLevel,
+    LineageGraph, SystemType, ConfidenceLevel, ColumnMapping,
 )
 
 
@@ -32,12 +32,14 @@ def _node(name: str, system: SystemType = SystemType.DATABRICKS,
 def _edge(src: LineageNode, tgt: LineageNode,
           confidence: float = 0.90,
           transformation: str = "copy",
-          sme: str | None = None) -> LineageEdge:
+          sme: str | None = None,
+          column_mappings: list[ColumnMapping] | None = None) -> LineageEdge:
     return LineageEdge(
         source_id=src.id, target_id=tgt.id,
         confidence=confidence, confidence_level=ConfidenceLevel.HIGH,
         transformation=transformation, evidence="test",
         sme_approved_by=sme,
+        column_mappings=column_mappings or [],
     )
 
 
@@ -69,6 +71,47 @@ def _full_graph() -> LineageGraph:
 # ===========================================================================
 
 class TestAlationPayload:
+
+    def test_column_mappings_are_serialized(self):
+        src = _node("customers", full_path="silver.customers")
+        tgt = _node("orders", full_path="gold.orders")
+        mapping = ColumnMapping(
+            source_column="first_name",
+            target_column="full_name",
+            transformation="CONCAT(first_name, last_name)",
+            confidence=0.85,
+            confidence_level=ConfidenceLevel.HIGH,
+            evidence="notebook.py",
+            sme_approved_by="alice@corp.com",
+        )
+        p = _graph_to_alation_payload(
+            _graph(src, tgt, _edge(src, tgt, column_mappings=[mapping])), "r"
+        )
+        assert p["lineage"][0]["column_mappings"] == [{
+            "source_column": "first_name",
+            "target_column": "full_name",
+            "transformation": "CONCAT(first_name, last_name)",
+            "confidence": 0.85,
+            "confidence_level": "high",
+            "evidence": "notebook.py",
+            "sme_approved_by": "alice@corp.com",
+        }]
+
+    def test_column_mappings_are_empty_for_table_only_edge(self):
+        src = _node("a", full_path="a")
+        tgt = _node("b", full_path="b")
+        p = _graph_to_alation_payload(_graph(src, tgt, _edge(src, tgt)), "r")
+        assert p["lineage"][0]["column_mappings"] == []
+
+    def test_edge_approval_is_inherited_by_column_mapping(self):
+        src = _node("a", full_path="a")
+        tgt = _node("b", full_path="b")
+        mapping = ColumnMapping(source_column="id", target_column="id")
+        p = _graph_to_alation_payload(
+            _graph(src, tgt, _edge(src, tgt, sme="owner@corp.com",
+                                   column_mappings=[mapping])), "r"
+        )
+        assert p["lineage"][0]["column_mappings"][0]["sme_approved_by"] == "owner@corp.com"
 
     def test_payload_has_correct_top_level_keys(self):
         g = _full_graph()
@@ -188,6 +231,32 @@ class TestNodeToAlationObj:
 
 class TestCollibraPayload:
 
+    def test_column_mappings_are_serialized_on_relation(self):
+        src = _node("customers", full_path="silver.customers")
+        tgt = _node("orders", full_path="gold.orders")
+        mapping = ColumnMapping(
+            source_column="customer_id",
+            target_column="customer_id",
+            confidence=0.9,
+            confidence_level=ConfidenceLevel.HIGH,
+            evidence="sqlglot",
+        )
+        p = _graph_to_collibra_payload(
+            _graph(src, tgt, _edge(src, tgt, column_mappings=[mapping])), "r"
+        )
+        assert p["relations"][0]["column_mappings"][0]["source_column"] == "customer_id"
+        assert p["relations"][0]["column_mappings"][0]["confidence_level"] == "high"
+
+    def test_rejected_edge_does_not_serialize_column_mappings(self):
+        src = _node("a", full_path="a")
+        tgt = _node("b", full_path="b")
+        edge = _edge(src, tgt, column_mappings=[
+            ColumnMapping(source_column="id", target_column="id")
+        ])
+        edge.review_status = "rejected"
+        p = _graph_to_collibra_payload(_graph(src, tgt, edge), "r")
+        assert p["relations"] == []
+
     def test_payload_has_assets_and_relations(self):
         g = _full_graph()
         p = _graph_to_collibra_payload(g, "run-1")
@@ -284,6 +353,20 @@ class TestCollibraPayload:
 # ===========================================================================
 
 class TestDryRunPublisher:
+
+    def test_preview_contains_column_mappings_for_alation_and_collibra(self):
+        src = _node("a", full_path="a")
+        tgt = _node("b", full_path="b")
+        mapping = ColumnMapping(
+            source_column="id",
+            target_column="id",
+            transformation="cast(id as bigint)",
+        )
+        g = _graph(src, tgt, _edge(src, tgt, column_mappings=[mapping]))
+        alation = DryRunPublisher("alation").publish(g, "r").payload
+        collibra = DryRunPublisher("collibra").publish(g, "r").payload
+        assert alation["lineage"][0]["column_mappings"][0]["transformation"] == "cast(id as bigint)"
+        assert collibra["relations"][0]["column_mappings"][0]["target_column"] == "id"
 
     def test_status_is_dry_run(self):
         g = _full_graph()

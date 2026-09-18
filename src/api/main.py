@@ -251,7 +251,7 @@ def get_lineage(run_id: str):
                     "confidence": m.confidence,
                     "confidence_level": m.confidence_level.value,
                     "evidence": m.evidence,
-                    "sme_approved_by": m.sme_approved_by,
+                    "sme_approved_by": m.sme_approved_by or e.sme_approved_by,
                 }
                 for m in e.column_mappings
             ],

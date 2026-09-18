@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 import json
 
-from src.graph.models import LineageGraph, LineageNode, LineageEdge, SystemType
+from src.graph.models import (
+    ColumnMapping,
+    LineageGraph,
+    LineageNode,
+    LineageEdge,
+    SystemType,
+)
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -277,6 +283,24 @@ class DryRunPublisher(CatalogPublisher):
 # Alation payload serialisation
 # ---------------------------------------------------------------------------
 
+def _column_mapping_payload(
+    mapping: ColumnMapping,
+    edge_sme_approved_by: str | None = None,
+) -> dict:
+    """Serialize a column mapping consistently across catalog payloads."""
+    return {
+        "source_column": mapping.source_column,
+        "target_column": mapping.target_column,
+        "transformation": mapping.transformation or "",
+        "confidence": mapping.confidence,
+        "confidence_level": mapping.confidence_level.value,
+        "evidence": mapping.evidence or "",
+        # Edge approval covers all mappings unless a mapping has its own
+        # explicit approval metadata.
+        "sme_approved_by": mapping.sme_approved_by or edge_sme_approved_by or "",
+    }
+
+
 def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
     """
     Converts a LineageGraph into an Alation Integration API v1 payload.
@@ -307,6 +331,10 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
             },
             "source_objects": [_node_to_alation_obj(src)],
             "target_objects": [_node_to_alation_obj(tgt)],
+            "column_mappings": [
+                _column_mapping_payload(mapping, edge.sme_approved_by)
+                for mapping in edge.column_mappings
+            ],
         }
         if edge.sme_approved_by:
             item["dataflow"]["description"] += f". SME-approved by: {edge.sme_approved_by}"
@@ -390,6 +418,10 @@ def _graph_to_collibra_payload(graph: LineageGraph, run_id: str) -> dict:
             ),
             "sme_approved_by":    edge.sme_approved_by or "",
             "system_boundary":    edge.system_boundary or "",
+            "column_mappings": [
+                _column_mapping_payload(mapping, edge.sme_approved_by)
+                for mapping in edge.column_mappings
+            ],
         })
 
     return {

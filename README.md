@@ -160,6 +160,14 @@ Scores are assigned at finalization (not at parse time) so they reflect the full
 - `DryRunPublisher` serialises to the target format without HTTP calls — used as default and for preview.
 - Collibra asset `external_id` is a **deterministic `uuid5`** from `node.full_path` — repeat runs update rather than duplicate assets.
 - `validate_config()` on each publisher exposes missing env vars before a run starts.
+- Alation lineage items, Collibra relations, and dry-run publish previews include a
+  structured `column_mappings` list for each table edge. Each mapping preserves
+  source and target columns, derived-column transformation logic, independent
+  confidence and evidence, and SME approval metadata. Table-only edges receive
+  an empty list, while rejected edges are excluded from all catalog payloads.
+  Edge-level SME approval is inherited by its column mappings in API and
+  catalog responses; mapping-level approval metadata takes precedence when
+  present.
 
 ---
 
