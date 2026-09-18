@@ -494,7 +494,7 @@ def page_lineage_graph() -> None:
 
     # Diagram and data views
     tab_mermaid, tab_dot, tab_nodes, tab_lineage = st.tabs([
-        "📊 Table View", "🔵 Graphviz DOT", "🗂️ Tables",
+        "📊 Table View", "🔵 Graphviz DOT", "🗂️ Tables and Datasets",
         "↔️ Table & Column Lineage",
     ])
 
@@ -547,16 +547,37 @@ def page_lineage_graph() -> None:
         if lineage and lineage.get("edges"):
             edges = lineage["edges"]
             st.caption(
-                "Expand a table relationship to inspect its source-to-target "
-                "column mappings."
+                "Expand a table row to inspect its source-to-target column mappings."
             )
+            header = st.columns([2, 2, 2, 1, 1])
+            header[0].markdown("**Target table**")
+            header[1].markdown("**Source table**")
+            header[2].markdown("**System boundary**")
+            header[3].markdown("**Confidence**")
+            header[4].markdown("**Columns**")
+
             for edge in edges:
                 source_name = _node_name(lineage, edge["source_id"])
                 target_name = _node_name(lineage, edge["target_id"])
                 mappings = edge.get("column_mappings", [])
-                with st.expander(f"📦 {target_name}  ←  {source_name}", expanded=False):
+                row = st.columns([2, 2, 2, 1, 1])
+                row[0].markdown(f"📦 `{target_name}`")
+                row[1].markdown(f"`{source_name}`")
+                row[2].markdown(edge.get("system_boundary") or "—")
+                row[3].markdown(
+                    f'{edge.get("confidence", 0):.0%}<br>'
+                    f'<small>{edge.get("confidence_level", "low")}</small>',
+                    unsafe_allow_html=True,
+                )
+                row[4].markdown(str(len(mappings)))
+
+                with st.expander(
+                    f"Expand {target_name} ← {source_name}",
+                    expanded=False,
+                ):
                     st.markdown(
                         f"**Table lineage:** `{source_name}` → `{target_name}`  \n"
+                        f"**System boundary:** {edge.get('system_boundary') or '—'}  \n"
                         f"**Transformation:** {edge.get('transformation') or '—'}  \n"
                         f"**Table confidence:** {edge.get('confidence', 0):.0%} "
                         f"({edge.get('confidence_level', 'low')})"
@@ -848,7 +869,7 @@ def page_submit_responses() -> None:
 
 def page_confidence() -> None:
     section_header("📊 Confidence Scores",
-                   "How confident is the extracted lineage?")
+                   "Review confidence scores and evidence before approving or rejecting lineage")
 
     run_id = _require_run()
     if not run_id:
@@ -866,6 +887,8 @@ def page_confidence() -> None:
         ("Avg Confidence",   f"{avg:.0%}" if avg else "—",          None),
         ("SME Confirmed",    str(data.get("sme_confirmed", 0)),      None),
         ("Cross-system",     str(data.get("cross_system_edges", 0)), None),
+        ("Pending review",   str(data.get("pending_review", 0)),       None),
+        ("Rejected",         str(data.get("rejected_edges", 0)),       None),
     ])
 
     st.divider()
@@ -900,6 +923,106 @@ def page_confidence() -> None:
             ("🔴 Low",        "< 65%",  "Uncertain — flagged as a gap for SME review"),
         ]
         st.table(pd.DataFrame(rows, columns=["Level", "Threshold", "Meaning"]))
+
+    st.divider()
+    st.subheader("🔍 Lineage review")
+    st.caption(
+        "Inspect the evidence for each extracted edge before approving or rejecting it. "
+        "Approval confirms the edge at 95%; rejection requires a reason."
+    )
+    reviewer = st.text_input(
+        "Owner / reviewer",
+        key="confidence_reviewer",
+        placeholder="e.g. owner@company.com",
+    ).strip()
+    lineage = _api_call(client().get_lineage, run_id)
+    nodes_by_id = {
+        node["id"]: node for node in (lineage or {}).get("nodes", [])
+    }
+    review_edges = (lineage or {}).get("edges", [])
+
+    if not review_edges:
+        st.info("No lineage edges are available for review.")
+        return
+
+    for edge in review_edges:
+        source = nodes_by_id.get(edge["source_id"], {})
+        target = nodes_by_id.get(edge["target_id"], {})
+        status = edge.get("review_status", "pending")
+        status_icon = {"approved": "✅", "rejected": "❌"}.get(status, "⏳")
+        label = (
+            f"{status_icon} {source.get('name', edge['source_id'])} → "
+            f"{target.get('name', edge['target_id'])} "
+            f"({edge.get('confidence', 0):.0%}, {status})"
+        )
+        with st.expander(label, expanded=status == "pending"):
+            st.markdown(
+                f"**Source:** `{source.get('full_path', source.get('name', '—'))}`  \n"
+                f"**Target:** `{target.get('full_path', target.get('name', '—'))}`  \n"
+                f"**System boundary:** {edge.get('system_boundary') or '—'}  \n"
+                f"**Transformation:** {edge.get('transformation') or '—'}  \n"
+                f"**Confidence:** {edge.get('confidence', 0):.0%} "
+                f"({edge.get('confidence_level', 'low')})  \n"
+                f"**Evidence:** {edge.get('evidence') or '—'}  \n"
+                f"**Review:** {status}"
+            )
+            mappings = edge.get("column_mappings", [])
+            if mappings:
+                st.dataframe(
+                    pd.DataFrame([
+                        {
+                            "Source column": mapping["source_column"],
+                            "Target column": mapping["target_column"],
+                            "Transformation": mapping.get("transformation")
+                            or "direct mapping",
+                            "Confidence": f'{mapping.get("confidence", 0):.0%}',
+                            "Evidence": mapping.get("evidence") or "—",
+                        }
+                        for mapping in mappings
+                    ]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            if status == "rejected":
+                st.error(f"Rejected: {edge.get('review_reason') or 'No reason recorded'}")
+            if not reviewer:
+                st.warning("Enter your owner/reviewer identity to make a decision.")
+                continue
+
+            reason = st.text_input(
+                "Rejection reason (required when rejecting)",
+                key=f"review_reason_{edge['id']}",
+            )
+            approve_col, reject_col = st.columns(2)
+            if approve_col.button("✅ Approve lineage", key=f"approve_{edge['id']}"):
+                with st.spinner("Saving approval…"):
+                    result = _api_call(
+                        client().review_lineage_edge,
+                        run_id,
+                        edge["id"],
+                        "approve",
+                        reviewer,
+                    )
+                if result:
+                    st.success("Lineage edge approved.")
+                    st.rerun()
+            if reject_col.button("❌ Reject lineage", key=f"reject_{edge['id']}"):
+                if not reason.strip():
+                    st.error("A rejection reason is required.")
+                else:
+                    with st.spinner("Saving rejection…"):
+                        result = _api_call(
+                            client().review_lineage_edge,
+                            run_id,
+                            edge["id"],
+                            "reject",
+                            reviewer,
+                            reason,
+                        )
+                    if result:
+                        st.success("Lineage edge rejected.")
+                        st.rerun()
 
 
 # ---------------------------------------------------------------------------

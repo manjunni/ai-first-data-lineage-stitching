@@ -109,7 +109,7 @@ class AlationPublisher(CatalogPublisher):
             catalog=self.catalog_name,
             run_id=run_id,
             nodes_published=len(graph.nodes),
-            edges_published=len(graph.edges),
+            edges_published=sum(e.review_status != "rejected" for e in graph.edges),
             payload=payload,
         )
 
@@ -179,7 +179,7 @@ class CollibraPublisher(CatalogPublisher):
             catalog=self.catalog_name,
             run_id=run_id,
             nodes_published=len(graph.nodes),
-            edges_published=len(graph.edges),
+            edges_published=sum(e.review_status != "rejected" for e in graph.edges),
             payload=payload,
         )
 
@@ -268,7 +268,7 @@ class DryRunPublisher(CatalogPublisher):
             catalog=f"dry_run:{self.target_catalog}",
             run_id=run_id,
             nodes_published=len(graph.nodes),
-            edges_published=len(graph.edges),
+            edges_published=sum(e.review_status != "rejected" for e in graph.edges),
             payload=payload,
         )
 
@@ -287,6 +287,8 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
     lineage_items = []
 
     for edge in graph.edges:
+        if edge.review_status == "rejected":
+            continue
         src = graph.nodes.get(edge.source_id)
         tgt = graph.nodes.get(edge.target_id)
         if not src or not tgt:
@@ -314,7 +316,7 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
     return {
         "run_id": run_id,
         "node_count": len(graph.nodes),
-        "edge_count": len(graph.edges),
+        "edge_count": sum(e.review_status != "rejected" for e in graph.edges),
         "lineage": lineage_items,
     }
 
@@ -370,6 +372,8 @@ def _graph_to_collibra_payload(graph: LineageGraph, run_id: str) -> dict:
 
     relations = []
     for edge in graph.edges:
+        if edge.review_status == "rejected":
+            continue
         src_ext = node_to_ext.get(edge.source_id)
         tgt_ext = node_to_ext.get(edge.target_id)
         if not src_ext or not tgt_ext:

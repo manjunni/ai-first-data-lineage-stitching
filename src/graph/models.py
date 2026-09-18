@@ -52,6 +52,10 @@ class LineageEdge(BaseModel):
     evidence: Optional[str] = None         # artifact name / SME name
     sme_approved_by: Optional[str] = None
     column_mappings: list[ColumnMapping] = Field(default_factory=list)
+    review_status: str = "pending"
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    review_reason: Optional[str] = None
     audit_trail: list[dict] = Field(default_factory=list)
 
 
