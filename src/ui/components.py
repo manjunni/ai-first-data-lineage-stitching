@@ -10,10 +10,9 @@ import streamlit.components.v1 as stc
 PAGE_DESCRIPTIONS = {
     "Dashboard": "Review recent lineage runs, monitor processing status, and quickly open an existing run for further investigation.",
     "New Run": "Upload SQL, notebook, DLT, or ADF artifacts to start extracting and stitching cross-system data lineage.",
-    "Lineage Graph": "Explore the stitched lineage graph to understand how datasets move across Azure, Spark, Databricks, and BI systems.",
+    "Lineage Graph": "Explore lineage, confidence evidence, and approval status; review edges and obtain Data Owner approvals before publishing.",
     "Gaps & Questions": "Review unresolved lineage gaps and inspect the questions generated for subject matter experts to answer.",
     "Submit Responses": "Provide SME answers for open lineage questions so uncertain connections can be resolved and the graph improved.",
-    "Confidence": "Inspect confidence scores and evidence signals for lineage edges before accepting the resulting data flow.",
     "Publish": "Preview and publish finalized lineage assets to Alation or Collibra after reviewing catalog-ready graph details.",
     "Audit Trail": "Trace workflow events, parser decisions, human responses, and publication activity for the selected lineage run.",
 }

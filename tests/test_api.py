@@ -104,6 +104,25 @@ def test_health_returns_ok():
     assert "catalog_config" in data
 
 
+def test_lineage_review_accepts_initial_authenticated_approval(client):
+    c, (mock, run_id, state) = client
+    edge = state["lineage_graph"].edges[0]
+    with patch(
+        "src.auth.settings.lineage_users_json",
+        '{"analyst@company.com":{"password":"change-me","role":"Analyst"}}',
+    ):
+        resp = c.post(
+            f"/runs/{run_id}/lineage/edges/{edge.id}/review",
+            json={
+                "decision": "approve",
+                "reviewer": "analyst@company.com",
+                "role": "Analyst",
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["review_status"] == "approved"
+
+
 # ===========================================================================
 # POST /runs — start a run
 # ===========================================================================
@@ -583,8 +602,14 @@ class TestPublishEndpoints:
     def test_publish_endpoint_calls_publisher(self, client):
         c, (mock, run_id, state) = client
         state["status"] = "finalized"
+        edge = state["lineage_graph"].edges[0]
+        edge.review_status = "approved"
+        edge.reviewed_by = "owner@company.com"
 
-        with patch("src.api.main.get_publisher") as mock_get_pub:
+        with patch(
+            "src.auth.settings.lineage_users_json",
+            '{"owner@company.com":{"password":"change-me","role":"Data Owner"}}',
+        ), patch("src.api.main.get_publisher") as mock_get_pub:
             mock_pub = MagicMock()
             mock_pub.publish.return_value = PublishResult(
                 status="dry_run", catalog="dry_run:alation", run_id=run_id,
@@ -595,6 +620,45 @@ class TestPublishEndpoints:
 
         assert resp.status_code == 200
         mock_pub.publish.assert_called_once()
+
+    def test_publish_rejected_without_data_owner_approval(self, client):
+        c, (mock, run_id, state) = client
+        state["status"] = "finalized"
+        edge = state["lineage_graph"].edges[0]
+        edge.review_status = "approved"
+        edge.reviewed_by = "analyst@company.com"
+
+        with patch(
+            "src.auth.settings.lineage_users_json",
+            '{"analyst@company.com":{"password":"change-me","role":"Analyst"}}',
+        ):
+            resp = c.post(f"/runs/{run_id}/publish", json={"catalog": "dry_run"})
+
+        assert resp.status_code == 403
+        assert "Data Owner" in resp.json()["detail"]
+
+    def test_data_owner_approval_is_read_only(self, client):
+        c, (mock, run_id, state) = client
+        edge = state["lineage_graph"].edges[0]
+        edge.review_status = "approved"
+        edge.reviewed_by = "owner@company.com"
+
+        with patch(
+            "src.auth.settings.lineage_users_json",
+            '{"owner@company.com":{"password":"change-me","role":"Data Owner"}}',
+        ):
+            resp = c.post(
+                f"/runs/{run_id}/lineage/edges/{edge.id}/review",
+                json={
+                    "decision": "reject",
+                    "reviewer": "owner@company.com",
+                    "role": "Data Owner",
+                    "reason": "Attempted change",
+                },
+            )
+
+        assert resp.status_code == 403
+        assert "read-only" in resp.json()["detail"]
 
     def test_publish_409_when_not_finalized(self, client):
         c, (mock, run_id, state) = client

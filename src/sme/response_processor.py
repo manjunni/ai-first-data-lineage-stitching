@@ -89,14 +89,17 @@ def apply_responses_to_graph(
         gap.resolved = True
 
         # Credit the SME on the node/edge they answered about.
+        # The resolving responder should always be the owner/approver recorded
+        # for the fixed gap, even when the node or edge had a previous default
+        # value from a fallback UI identity.
         if sme_email:
             if gap.node_id:
                 node = graph.nodes.get(gap.node_id)
-                if node and not node.owner:
+                if node:
                     node.owner = sme_email
             if gap.edge_id:
                 edge = next((e for e in graph.edges if e.id == gap.edge_id), None)
-                if edge and not edge.sme_approved_by:
+                if edge:
                     edge.sme_approved_by = sme_email
 
     return list(gap_index.values()), graph

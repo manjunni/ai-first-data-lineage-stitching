@@ -23,6 +23,7 @@ from src.ui.components import (
 )
 from src.sme.email_handler import parse_responses_from_text
 from src.sme.file_handlers import FileHandlerError, extract_text_from_file
+from src.auth import role_can_publish, role_for_user
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -207,6 +208,8 @@ _DEFAULTS = {
     "api_url":         os.getenv("API_BASE_URL", "http://localhost:8000"),
     "last_error":      None,
     "last_run_result": None,
+    "authenticated_user": None,
+    "authenticated_role": None,
 }
 for key, val in _DEFAULTS.items():
     if key not in st.session_state:
@@ -219,6 +222,121 @@ for key, val in _DEFAULTS.items():
 
 def client() -> LineageApiClient:
     return LineageApiClient(st.session_state.api_url)
+
+
+st.markdown("""
+<style>
+
+/* Dialog background */
+[data-testid="stDialog"] > div {
+    background-color: #2d1e5f !important;
+    color: #1e123a !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Form container */
+[data-testid="stForm"] {
+    background-color: #2d1e5f !important;
+    padding: 1rem !important;
+    border-radius: 10px !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Labels */
+.stTextInput label,
+.stTextArea label {
+    color: #1e123a !important;
+    font-weight: 500;
+}
+
+/* Text input fields */
+.stTextInput input {
+    background-color: #ffffff !important;
+    color: #1e123a !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Password field */
+.stTextInput input[type="password"] {
+    background-color: #ffffff !important;
+    color: #1e123a !important;
+}
+
+/* Placeholder text */
+.stTextInput input::placeholder {
+    color: #756b99 !important;
+}
+
+/* Keep typed credentials visible in normal, focused, and autofill states. */
+.stTextInput input:focus,
+.stTextInput input:-webkit-autofill,
+.stTextInput input:-webkit-autofill:focus {
+    color: #1e123a !important;
+    -webkit-text-fill-color: #1e123a !important;
+    caret-color: #1e123a !important;
+}
+
+/* Button */
+.stButton button,
+.stFormSubmitButton button {
+    background-color: #1e88e5 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+}
+
+.stButton button:hover,
+.stFormSubmitButton button:hover {
+    background-color: #0d47a1 !important;
+}
+
+/* Dialog title */
+[data-testid="stDialog"] h1,
+[data-testid="stDialog"] h2,
+[data-testid="stDialog"] h3 {
+    color: #1e123a !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.dialog("Data Lineage Stitching Agent")
+def render_login() -> None:
+    """Show the authenticated application entry point as a modal dialog."""
+    logo_left, logo_center, logo_right = st.columns([1, 2, 1])
+    with logo_center:
+        st.image("assets/capgemini-logo.png", use_container_width=True)
+    st.markdown(
+        "<div style='text-align:center; padding:0 0 0.5rem;'>"
+        "<div style='font-size:1.05rem; font-weight:600; color:#1e123a;'>"
+        "Insights &amp; Data"
+        "</div>"
+        "<div style='color:#1e123a;'>Sign in to review and approve lineage</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    
+    with st.form("lineage_login"):
+        username = st.text_input("User ID", autocomplete="username")
+        password = st.text_input("Password", type="password", autocomplete="current-password")
+        submitted = st.form_submit_button("Sign in", type="primary")
+    if submitted:
+        try:
+            result = client().login(username, password)
+            if result:
+                st.session_state.authenticated_user = result["username"]
+                st.session_state.authenticated_role = result["role"]
+                st.rerun()
+        except ApiError:
+            st.error("Invalid username or password.")
+        except Exception as exc:
+            st.error(f"Unable to sign in: {exc}")
+
+
+if not st.session_state.authenticated_user:
+    render_login()
+    st.stop()
 
 
 def _api_call(fn, *args, **kwargs):
@@ -249,6 +367,14 @@ def render_sidebar() -> None:
         </div>
         """, unsafe_allow_html=True)
         st.divider()
+        st.caption(
+            f"Signed in: {st.session_state.authenticated_user} "
+            f"({st.session_state.authenticated_role})"
+        )
+        if st.button("Sign out", use_container_width=True):
+            st.session_state.authenticated_user = None
+            st.session_state.authenticated_role = None
+            st.rerun()
 
         # API connection
         with st.expander("⚙️ API Settings", expanded=False):
@@ -277,7 +403,6 @@ def render_sidebar() -> None:
             "Lineage Graph",
             "Gaps & Questions",
             "Submit Responses",
-            "Confidence",
             "Publish",
             "Audit Trail",
         ]
@@ -477,25 +602,42 @@ def page_lineage_graph() -> None:
         return
 
     run = _api_call(client().get_run, run_id)
+    lineage = _api_call(client().get_lineage, run_id)
+    lineage_edges = (lineage or {}).get("edges", [])
+    pending_approvals = sum(
+        not (
+            edge.get("review_status") == "approved"
+            and role_for_user(edge.get("reviewed_by")) == "Data Owner"
+        )
+        for edge in lineage_edges
+    )
+
     if run:
         render_workflow_progress(run.get("status", ""))
         metric_row([
             ("Nodes",      str(run.get("node_count", 0)), None),
             ("Edges",      str(run.get("edge_count", 0)), None),
             ("Open Gaps",  str(run.get("gaps_open", 0)),  None),
+            ("Pending approvals", str(pending_approvals), None),
             ("Iteration",  str(run.get("iteration", 0)),  None),
         ])
+        if pending_approvals:
+            st.warning(
+                f"⚠️ {pending_approvals} lineage edge"
+                f"{'s' if pending_approvals != 1 else ''} still require"
+                " Data Owner approval before publishing."
+            )
+        else:
+            st.success("✅ All lineage edges have Data Owner approval.")
 
     st.subheader("System legend")
     render_system_legend()
     st.markdown("")
 
-    lineage = _api_call(client().get_lineage, run_id)
-
     # Diagram and data views
     tab_mermaid, tab_dot, tab_nodes, tab_lineage = st.tabs([
         "📊 Table View", "🔵 Graphviz DOT", "🗂️ Tables and Datasets",
-        "↔️ Table & Column Lineage",
+        "↔️ Table & Column Lineage Approval",
     ])
 
     with tab_mermaid:
@@ -549,18 +691,21 @@ def page_lineage_graph() -> None:
             st.caption(
                 "Expand a table row to inspect its source-to-target column mappings."
             )
-            header = st.columns([2, 2, 2, 1, 1])
+            header = st.columns([2, 2, 2, 1, 1, 1.5])
             header[0].markdown("**Target table**")
             header[1].markdown("**Source table**")
             header[2].markdown("**System boundary**")
             header[3].markdown("**Confidence**")
             header[4].markdown("**Columns**")
+            header[5].markdown("**Approval**")
 
             for edge in edges:
                 source_name = _node_name(lineage, edge["source_id"])
                 target_name = _node_name(lineage, edge["target_id"])
                 mappings = edge.get("column_mappings", [])
-                row = st.columns([2, 2, 2, 1, 1])
+                review_status = edge.get("review_status", "pending")
+                approval_role = role_for_user(edge.get("reviewed_by"))
+                row = st.columns([2, 2, 2, 1, 1, 1.5])
                 row[0].markdown(f"📦 `{target_name}`")
                 row[1].markdown(f"`{source_name}`")
                 row[2].markdown(edge.get("system_boundary") or "—")
@@ -570,6 +715,10 @@ def page_lineage_graph() -> None:
                     unsafe_allow_html=True,
                 )
                 row[4].markdown(str(len(mappings)))
+                row[5].markdown(
+                    f"{'✅' if review_status == 'approved' else '❌' if review_status == 'rejected' else '⏳'} "
+                    f"{approval_role or review_status}"
+                )
 
                 with st.expander(
                     f"Expand {target_name} ← {source_name}",
@@ -580,40 +729,102 @@ def page_lineage_graph() -> None:
                         f"**System boundary:** {edge.get('system_boundary') or '—'}  \n"
                         f"**Transformation:** {edge.get('transformation') or '—'}  \n"
                         f"**Table confidence:** {edge.get('confidence', 0):.0%} "
-                        f"({edge.get('confidence_level', 'low')})"
+                        f"({edge.get('confidence_level', 'low')})  \n"
+                        f"**Approval status:** {review_status}  \n"
+                        f"**Approval obtained from:** "
+                        f"{approval_role or '—'} ({edge.get('reviewed_by') or '—'})"
                     )
                     if not mappings:
                         st.info("No column-level mappings were extracted for this relationship.")
-                        continue
-                    tree_lines = []
-                    for index, mapping in enumerate(mappings):
-                        branch = "└──" if index == len(mappings) - 1 else "├──"
-                        source_column = mapping["source_column"]
-                        source_display = (
-                            mapping.get("transformation")
-                            or (f"{source_name}.{source_column}"
-                                if "." not in source_column else source_column)
+                    else:
+                        tree_lines = []
+                        for index, mapping in enumerate(mappings):
+                            branch = "└──" if index == len(mappings) - 1 else "├──"
+                            source_column = mapping["source_column"]
+                            source_display = (
+                                mapping.get("transformation")
+                                or (f"{source_name}.{source_column}"
+                                    if "." not in source_column else source_column)
+                            )
+                            tree_lines.append(
+                                f"{branch} {mapping['target_column']} ← {source_display}"
+                            )
+                        st.code(f"{target_name}\n" + "\n".join(tree_lines), language="text")
+                        st.dataframe(
+                            pd.DataFrame([
+                                {
+                                    "Source column": mapping["source_column"],
+                                    "Target column": mapping["target_column"],
+                                    "Transformation": mapping.get("transformation")
+                                    or "direct mapping",
+                                    "Confidence": f'{mapping.get("confidence", 0):.0%}',
+                                    "Level": mapping.get("confidence_level", "low"),
+                                    "Evidence": mapping.get("evidence") or "—",
+                                }
+                                for mapping in mappings
+                            ]),
+                            use_container_width=True,
+                            hide_index=True,
                         )
-                        tree_lines.append(
-                            f"{branch} {mapping['target_column']} ← {source_display}"
-                        )
-                    st.code(f"{target_name}\n" + "\n".join(tree_lines), language="text")
-                    st.dataframe(
-                        pd.DataFrame([
-                            {
-                                "Source column": mapping["source_column"],
-                                "Target column": mapping["target_column"],
-                                "Transformation": mapping.get("transformation")
-                                or "direct mapping",
-                                "Confidence": f'{mapping.get("confidence", 0):.0%}',
-                                "Level": mapping.get("confidence_level", "low"),
-                                "Evidence": mapping.get("evidence") or "—",
-                            }
-                            for mapping in mappings
-                        ]),
-                        use_container_width=True,
-                        hide_index=True,
+
+                    reviewer = st.session_state.authenticated_user
+                    reviewer_role = st.session_state.authenticated_role
+                    data_owner_approved = (
+                        review_status == "approved" and approval_role == "Data Owner"
                     )
+                    if data_owner_approved:
+                        st.success(
+                            f"🔒 Read-only: approved by Data Owner "
+                            f"({edge.get('reviewed_by')})."
+                        )
+                    elif not reviewer:
+                        st.warning("Sign in as an authorized reviewer to make a decision.")
+                    else:
+                        if review_status == "rejected":
+                            st.error(
+                                f"Rejected: {edge.get('review_reason') or 'No reason recorded'}"
+                            )
+                        reason = st.text_input(
+                            "Rejection reason (required when rejecting)",
+                            key=f"graph_review_reason_{edge['id']}",
+                        )
+                        approve_col, reject_col = st.columns(2)
+                        if approve_col.button(
+                            "✅ Approve lineage",
+                            key=f"graph_approve_{edge['id']}",
+                        ):
+                            with st.spinner("Saving approval…"):
+                                result = _api_call(
+                                    client().review_lineage_edge,
+                                    run_id,
+                                    edge["id"],
+                                    "approve",
+                                    reviewer,
+                                    reviewer_role,
+                                )
+                            if result:
+                                st.success("Lineage edge approved.")
+                                st.rerun()
+                        if reject_col.button(
+                            "❌ Reject lineage",
+                            key=f"graph_reject_{edge['id']}",
+                        ):
+                            if not reason.strip():
+                                st.error("A rejection reason is required.")
+                            else:
+                                with st.spinner("Saving rejection…"):
+                                    result = _api_call(
+                                        client().review_lineage_edge,
+                                        run_id,
+                                        edge["id"],
+                                        "reject",
+                                        reviewer,
+                                        reviewer_role,
+                                        reason,
+                                    )
+                                if result:
+                                    st.success("Lineage edge rejected.")
+                                    st.rerun()
         else:
             empty_state("↔️", "No table relationships available")
 
@@ -751,11 +962,8 @@ def page_submit_responses() -> None:
         return
 
     st.subheader(f"📋 {len(questions)} question{'s' if len(questions) != 1 else ''} awaiting answers")
-    responder_name = st.text_input(
-        "Your name or email (appears as owner of resolved nodes)",
-        key="responder_name",
-        placeholder="e.g. Manjusha Unnikrishnan",
-    )
+    responder_role = st.session_state.authenticated_role
+    st.info(f"Responses will be recorded under the signed-in role: **{responder_role}**")
 
     upload_answers = {}
     upload_errors = []
@@ -786,7 +994,7 @@ def page_submit_responses() -> None:
                 ).strip()
                 parsed = parse_responses_from_text(
                     extracted_text,
-                    sme_email=responder_name.strip() or "analyst@ui",
+                    sme_email=responder_role,
                     run_id=run_id,
                 )
                 matching = [
@@ -839,7 +1047,7 @@ def page_submit_responses() -> None:
 
         reply_text = "\n".join(lines)
         from src.sme.email_handler import parse_email_responses
-        sender = st.session_state.get("responder_name", "").strip() or "analyst@ui"
+        sender = responder_role
         raw = [{"from": sender, "subject": f"[Lineage Agent] Run {run_id} — reply",
                 "body": reply_text}]
         parsed = parse_email_responses(raw)
@@ -861,168 +1069,6 @@ def page_submit_responses() -> None:
 
     if st.session_state.last_run_result and st.session_state.run_id:
         _show_run_result(st.session_state.last_run_result)
-
-
-# ---------------------------------------------------------------------------
-# Page: Confidence
-# ---------------------------------------------------------------------------
-
-def page_confidence() -> None:
-    section_header("📊 Confidence Scores",
-                   "Review confidence scores and evidence before approving or rejecting lineage")
-
-    run_id = _require_run()
-    if not run_id:
-        return
-
-    data = _api_call(client().get_confidence, run_id)
-    if not data:
-        empty_state("📊", "Confidence data not yet available",
-                    "The run must be finalized first.")
-        return
-
-    avg = data.get("avg_confidence")
-    metric_row([
-        ("Total Edges",      str(data.get("total_edges", 0)),       None),
-        ("Avg Confidence",   f"{avg:.0%}" if avg else "—",          None),
-        ("SME Confirmed",    str(data.get("sme_confirmed", 0)),      None),
-        ("Cross-system",     str(data.get("cross_system_edges", 0)), None),
-        ("Pending review",   str(data.get("pending_review", 0)),       None),
-        ("Rejected",         str(data.get("rejected_edges", 0)),       None),
-    ])
-
-    st.divider()
-
-    col_chart, col_stats = st.columns([2, 1])
-
-    with col_chart:
-        st.subheader("Edges by confidence level")
-        by_level = data.get("by_level", {})
-        if by_level:
-            chart_data = pd.DataFrame({
-                "Level":  list(by_level.keys()),
-                "Count":  list(by_level.values()),
-            }).set_index("Level")
-            st.bar_chart(chart_data, color="#4472C4")
-
-    with col_stats:
-        st.subheader("Statistics")
-        if avg is not None:
-            st.progress(avg, text=f"Average: {avg:.0%}")
-        st.metric("Min confidence", f"{data.get('min_confidence', 0):.0%}")
-        st.metric("Max confidence", f"{data.get('max_confidence', 0):.0%}")
-        if data.get("unresolved_adf_edges", 0):
-            st.warning(f"⚠️ {data['unresolved_adf_edges']} unresolved ADF dataset references")
-
-    # Confidence level explanations
-    with st.expander("ℹ️ What do confidence levels mean?"):
-        rows = [
-            ("✅ Confirmed",  ">= 95%", "SME has explicitly approved this lineage link"),
-            ("🟢 High",       ">= 85%", "Parsed directly from artifact (SQL AST, Python AST, ADF JSON)"),
-            ("🟡 Medium",     ">= 65%", "Inferred by LLM or parsed via regex"),
-            ("🔴 Low",        "< 65%",  "Uncertain — flagged as a gap for SME review"),
-        ]
-        st.table(pd.DataFrame(rows, columns=["Level", "Threshold", "Meaning"]))
-
-    st.divider()
-    st.subheader("🔍 Lineage review")
-    st.caption(
-        "Inspect the evidence for each extracted edge before approving or rejecting it. "
-        "Approval confirms the edge at 95%; rejection requires a reason."
-    )
-    reviewer = st.text_input(
-        "Owner / reviewer",
-        key="confidence_reviewer",
-        placeholder="e.g. owner@company.com",
-    ).strip()
-    lineage = _api_call(client().get_lineage, run_id)
-    nodes_by_id = {
-        node["id"]: node for node in (lineage or {}).get("nodes", [])
-    }
-    review_edges = (lineage or {}).get("edges", [])
-
-    if not review_edges:
-        st.info("No lineage edges are available for review.")
-        return
-
-    for edge in review_edges:
-        source = nodes_by_id.get(edge["source_id"], {})
-        target = nodes_by_id.get(edge["target_id"], {})
-        status = edge.get("review_status", "pending")
-        status_icon = {"approved": "✅", "rejected": "❌"}.get(status, "⏳")
-        label = (
-            f"{status_icon} {source.get('name', edge['source_id'])} → "
-            f"{target.get('name', edge['target_id'])} "
-            f"({edge.get('confidence', 0):.0%}, {status})"
-        )
-        with st.expander(label, expanded=status == "pending"):
-            st.markdown(
-                f"**Source:** `{source.get('full_path', source.get('name', '—'))}`  \n"
-                f"**Target:** `{target.get('full_path', target.get('name', '—'))}`  \n"
-                f"**System boundary:** {edge.get('system_boundary') or '—'}  \n"
-                f"**Transformation:** {edge.get('transformation') or '—'}  \n"
-                f"**Confidence:** {edge.get('confidence', 0):.0%} "
-                f"({edge.get('confidence_level', 'low')})  \n"
-                f"**Evidence:** {edge.get('evidence') or '—'}  \n"
-                f"**Review:** {status}"
-            )
-            mappings = edge.get("column_mappings", [])
-            if mappings:
-                st.dataframe(
-                    pd.DataFrame([
-                        {
-                            "Source column": mapping["source_column"],
-                            "Target column": mapping["target_column"],
-                            "Transformation": mapping.get("transformation")
-                            or "direct mapping",
-                            "Confidence": f'{mapping.get("confidence", 0):.0%}',
-                            "Evidence": mapping.get("evidence") or "—",
-                        }
-                        for mapping in mappings
-                    ]),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-            if status == "rejected":
-                st.error(f"Rejected: {edge.get('review_reason') or 'No reason recorded'}")
-            if not reviewer:
-                st.warning("Enter your owner/reviewer identity to make a decision.")
-                continue
-
-            reason = st.text_input(
-                "Rejection reason (required when rejecting)",
-                key=f"review_reason_{edge['id']}",
-            )
-            approve_col, reject_col = st.columns(2)
-            if approve_col.button("✅ Approve lineage", key=f"approve_{edge['id']}"):
-                with st.spinner("Saving approval…"):
-                    result = _api_call(
-                        client().review_lineage_edge,
-                        run_id,
-                        edge["id"],
-                        "approve",
-                        reviewer,
-                    )
-                if result:
-                    st.success("Lineage edge approved.")
-                    st.rerun()
-            if reject_col.button("❌ Reject lineage", key=f"reject_{edge['id']}"):
-                if not reason.strip():
-                    st.error("A rejection reason is required.")
-                else:
-                    with st.spinner("Saving rejection…"):
-                        result = _api_call(
-                            client().review_lineage_edge,
-                            run_id,
-                            edge["id"],
-                            "reject",
-                            reviewer,
-                            reason,
-                        )
-                    if result:
-                        st.success("Lineage edge rejected.")
-                        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -1051,6 +1097,19 @@ def page_publish() -> None:
         )
         render_workflow_progress(status)
         return
+
+    lineage = _api_call(client().get_lineage, run_id)
+    lineage_edges = (lineage or {}).get("edges", [])
+    lineage_approved = bool(lineage_edges) and all(
+        edge.get("review_status") == "approved"
+        and role_can_publish(role_for_user(edge.get("reviewed_by")))
+        for edge in lineage_edges
+    )
+    if not lineage_approved:
+        st.warning(
+            "Publishing is locked until every lineage edge is approved by an "
+            "SME, Domain Steward, or Data Owner."
+        )
 
     # Compute catalog_ready BEFORE rendering the columns so the button's
     # disabled state reflects the current selection correctly.
@@ -1097,8 +1156,14 @@ def page_publish() -> None:
 
     if st.button(
         f"📤 Publish to {catalog}", type="primary",
-        disabled=not catalog_ready,
-        help=None if catalog_ready else f"Configure {catalog.capitalize()} credentials in .env first",
+        disabled=not catalog_ready or not lineage_approved,
+        help=(
+            f"Configure {catalog.capitalize()} credentials in .env first"
+            if not catalog_ready
+            else "Every lineage edge requires approval from a Data owner role"
+            if not lineage_approved
+            else None
+        ),
     ):
         with st.spinner(f"Publishing to {catalog}…"):
             result = _api_call(client().publish, run_id, catalog=catalog)
@@ -1216,7 +1281,6 @@ _PAGES = {
     "Lineage Graph":    page_lineage_graph,
     "Gaps & Questions": page_gaps_and_questions,
     "Submit Responses": page_submit_responses,
-    "Confidence":       page_confidence,
     "Publish":          page_publish,
     "Audit Trail":      page_audit_trail,
 }

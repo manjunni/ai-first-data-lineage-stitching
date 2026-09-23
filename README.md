@@ -82,6 +82,26 @@ cp .env.example .env
 # Fill in Azure OpenAI, ACS email, Alation/Collibra credentials
 ```
 
+Configure role-based human approval users with `LINEAGE_USERS_JSON`. Passwords
+are read from the environment and are not stored in lineage data:
+
+```dotenv
+LINEAGE_USERS_JSON={"owner@company.com":{"password":"change-me","role":"Data Owner"},"steward@company.com":{"password":"change-me","role":"Domain Steward"},"sme@company.com":{"password":"change-me","role":"SME"},"analyst@company.com":{"password":"change-me","role":"Analyst"}}
+```
+
+The Streamlit app requires login before showing the agent. Missing-lineage edge
+approvals use the hierarchy **Data Owner > Domain Steward > SME > Analyst**.
+Every authenticated role may make an initial decision; a higher-ranked role may
+override a lower-ranked decision, but a lower-ranked role cannot override a
+higher-ranked one.
+
+Catalog publishing requires every lineage edge to be approved by a **Data
+Owner**. SME, Domain Steward, or Analyst approval alone is not sufficient. The
+Streamlit Publish action is disabled until this condition is met, and the API
+enforces the same authorization rule for direct publish requests. Payload
+previews remain available before approval. Once a Data Owner approves an edge,
+that decision becomes read-only and cannot be changed.
+
 ### 2. Install dependencies
 
 ```bash
@@ -160,6 +180,7 @@ Scores are assigned at finalization (not at parse time) so they reflect the full
 - `DryRunPublisher` serialises to the target format without HTTP calls — used as default and for preview.
 - Collibra asset `external_id` is a **deterministic `uuid5`** from `node.full_path` — repeat runs update rather than duplicate assets.
 - `validate_config()` on each publisher exposes missing env vars before a run starts.
+- Publishing is enabled only after every lineage edge has an approved review from a `Data Owner`. This is enforced in both the Streamlit UI and the publish API; Analyst, SME, and Domain Steward approvals do not authorize publication.
 - Alation lineage items, Collibra relations, and dry-run publish previews include a
   structured `column_mappings` list for each table edge. Each mapping preserves
   source and target columns, derived-column transformation logic, independent
@@ -638,12 +659,16 @@ customer_orders
 
 ### Confidence Review
 
-The **Confidence** page provides owner review before lineage is approved or
-published. Each edge can be expanded to inspect source and target paths,
-system boundary, transformation, parser/LLM evidence, confidence, and any
-column mappings. Owners can approve an edge, which records SME confirmation
-and sets confidence to 95%, or reject it with a required reason. Rejected
-edges are excluded from catalog publishing and are recorded in the audit trail.
+The **Lineage Graph** page provides review before lineage is approved or
+published. The page shows the pending Data Owner approval count at the top.
+Each edge can be expanded to inspect source and target paths, system boundary,
+transformation, parser/LLM evidence, per-edge confidence, and column mappings.
+The expanded relationship also displays approval status, reviewer identity, and
+reviewer role, with approve/reject controls for authorized reviewers. Once a
+Data Owner approves an edge, its approval and rejection controls are disabled
+and the lineage becomes read-only. Rejected edges are excluded from catalog
+publishing and are recorded in the audit trail. Aggregate average, minimum,
+and maximum confidence metrics are not shown in the UI.
 
 ---
 
