@@ -182,18 +182,7 @@ class ConfidenceSummaryResponse(BaseModel):
 class LineageReviewRequest(BaseModel):
     decision: str = Field(description="approve or reject")
     reviewer: str = Field(min_length=1)
-    role: str = Field(min_length=1)
     reason: Optional[str] = None
-
-
-class LoginRequest(BaseModel):
-    username: str = Field(min_length=1)
-    password: str = Field(min_length=1)
-
-
-class LoginResponse(BaseModel):
-    username: str
-    role: str
 
 
 class LineageReviewResponse(BaseModel):
