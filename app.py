@@ -637,7 +637,7 @@ def page_lineage_graph() -> None:
     # Diagram and data views
     tab_mermaid, tab_dot, tab_nodes, tab_lineage = st.tabs([
         "📊 Table View", "🔵 Graphviz DOT", "🗂️ Tables and Datasets",
-        "↔️ Table & Column Lineage",
+        "↔️ Table & Column Lineage Approval",
     ])
 
     with tab_mermaid:
