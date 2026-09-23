@@ -479,6 +479,24 @@ class TestApplyResponsesToGraph:
         )
         assert updated_graph.nodes[node_id].system == SystemType.DATABRICKS
 
+    def test_resolving_response_overwrites_previous_owner(self):
+        n = _node("mystery", system=SystemType.UNKNOWN, full_path="mystery", owner="analyst@ui")
+        g = _graph(n)
+        node_id = list(g.nodes.keys())[0]
+        gap = _gap("unknown_system", node_id=node_id)
+
+        structured = self._make_structured(
+            answer_type="system_type",
+            primary_value="main.silver.mystery",
+            system_type="databricks",
+        )
+        _, updated_graph = self._run(
+            [gap],
+            [{"gap_id": gap.id, "sme_email": "sme@company.com", "raw_answer": "Databricks"}],
+            g, structured,
+        )
+        assert updated_graph.nodes[node_id].owner == "sme@company.com"
+
     def test_low_confidence_confirmation_sets_sme_approved(self):
         src = _node("a", full_path="a")
         tgt = _node("b", full_path="b")

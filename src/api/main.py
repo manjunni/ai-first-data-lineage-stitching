@@ -32,7 +32,7 @@ from src.visualization.diagram_generator import (
 from src.sme.email_handler import parse_email_responses, parse_responses_from_text
 from src.sme.file_handlers import extract_text_from_file, FileHandlerError
 from src.graph.models import ConfidenceLevel
-from src.auth import authenticate, role_can_review, role_for_user
+from src.auth import authenticate, role_can_publish, role_can_review, role_for_user
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -295,6 +295,11 @@ def review_lineage_edge(run_id: str, edge_id: str, payload: LineageReviewRequest
     authenticated_role = role_for_user(payload.reviewer)
     if authenticated_role != payload.role:
         raise HTTPException(status_code=403, detail="Reviewer identity and role do not match")
+    if role_for_user(edge.reviewed_by) == "Data Owner":
+        raise HTTPException(
+            status_code=403,
+            detail="This lineage decision is read-only after Data Owner approval",
+        )
     if not role_can_review(payload.role, role_for_user(edge.reviewed_by)):
         raise HTTPException(
             status_code=403,
@@ -656,6 +661,15 @@ async def publish_run(run_id: str, body: PublishRequest = PublishRequest()):
     graph = values.get("lineage_graph")
     if not graph:
         raise HTTPException(status_code=404, detail="No lineage graph to publish")
+    if not graph.edges or any(
+        edge.review_status != "approved"
+        or not role_can_publish(role_for_user(edge.reviewed_by))
+        for edge in graph.edges
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="All lineage edges must be approved by a Data Owner before publishing",
+        )
 
     publisher = get_publisher(body.catalog)
     result = await asyncio.to_thread(publisher.publish, graph, run_id)

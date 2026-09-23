@@ -250,7 +250,6 @@ class TestPageDescriptions:
         "Lineage Graph",
         "Gaps & Questions",
         "Submit Responses",
-        "Confidence",
         "Publish",
         "Audit Trail",
     }

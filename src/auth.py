@@ -13,6 +13,7 @@ ROLE_RANK = {
     "Domain Steward": 3,
     "Data Owner": 4,
 }
+MIN_PUBLISH_ROLE_RANK = ROLE_RANK["Data Owner"]
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,11 @@ def role_can_review(actor_role: str, current_reviewer_role: str | None) -> bool:
     if not current_reviewer_role:
         return True
     return ROLE_RANK[actor_role] >= ROLE_RANK.get(current_reviewer_role, 0)
+
+
+def role_can_publish(role: str | None) -> bool:
+    """Return whether a role is authorized to approve publishable lineage."""
+    return bool(role and ROLE_RANK.get(role, 0) >= MIN_PUBLISH_ROLE_RANK)
 
 
 def role_for_user(username: str | None) -> str | None:
