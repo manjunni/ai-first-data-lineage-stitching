@@ -207,6 +207,8 @@ _DEFAULTS = {
     "api_url":         os.getenv("API_BASE_URL", "http://localhost:8000"),
     "last_error":      None,
     "last_run_result": None,
+    "authenticated_user": None,
+    "authenticated_role": None,
 }
 for key, val in _DEFAULTS.items():
     if key not in st.session_state:
@@ -219,6 +221,121 @@ for key, val in _DEFAULTS.items():
 
 def client() -> LineageApiClient:
     return LineageApiClient(st.session_state.api_url)
+
+
+st.markdown("""
+<style>
+
+/* Dialog background */
+[data-testid="stDialog"] > div {
+    background-color: #2d1e5f !important;
+    color: #1e123a !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Form container */
+[data-testid="stForm"] {
+    background-color: #2d1e5f !important;
+    padding: 1rem !important;
+    border-radius: 10px !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Labels */
+.stTextInput label,
+.stTextArea label {
+    color: #1e123a !important;
+    font-weight: 500;
+}
+
+/* Text input fields */
+.stTextInput input {
+    background-color: #ffffff !important;
+    color: #1e123a !important;
+    border: 1px solid #4a3587 !important;
+}
+
+/* Password field */
+.stTextInput input[type="password"] {
+    background-color: #ffffff !important;
+    color: #1e123a !important;
+}
+
+/* Placeholder text */
+.stTextInput input::placeholder {
+    color: #756b99 !important;
+}
+
+/* Keep typed credentials visible in normal, focused, and autofill states. */
+.stTextInput input:focus,
+.stTextInput input:-webkit-autofill,
+.stTextInput input:-webkit-autofill:focus {
+    color: #1e123a !important;
+    -webkit-text-fill-color: #1e123a !important;
+    caret-color: #1e123a !important;
+}
+
+/* Button */
+.stButton button,
+.stFormSubmitButton button {
+    background-color: #1e88e5 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+}
+
+.stButton button:hover,
+.stFormSubmitButton button:hover {
+    background-color: #0d47a1 !important;
+}
+
+/* Dialog title */
+[data-testid="stDialog"] h1,
+[data-testid="stDialog"] h2,
+[data-testid="stDialog"] h3 {
+    color: #1e123a !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.dialog("Data Lineage Stitching Agent")
+def render_login() -> None:
+    """Show the authenticated application entry point as a modal dialog."""
+    logo_left, logo_center, logo_right = st.columns([1, 2, 1])
+    with logo_center:
+        st.image("assets/capgemini-logo.png", use_container_width=True)
+    st.markdown(
+        "<div style='text-align:center; padding:0 0 0.5rem;'>"
+        "<div style='font-size:1.05rem; font-weight:600; color:#1e123a;'>"
+        "Insights &amp; Data"
+        "</div>"
+        "<div style='color:#1e123a;'>Sign in to review and approve lineage</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    
+    with st.form("lineage_login"):
+        username = st.text_input("User ID", autocomplete="username")
+        password = st.text_input("Password", type="password", autocomplete="current-password")
+        submitted = st.form_submit_button("Sign in", type="primary")
+    if submitted:
+        try:
+            result = client().login(username, password)
+            if result:
+                st.session_state.authenticated_user = result["username"]
+                st.session_state.authenticated_role = result["role"]
+                st.rerun()
+        except ApiError:
+            st.error("Invalid username or password.")
+        except Exception as exc:
+            st.error(f"Unable to sign in: {exc}")
+
+
+if not st.session_state.authenticated_user:
+    render_login()
+    st.stop()
 
 
 def _api_call(fn, *args, **kwargs):
@@ -249,6 +366,14 @@ def render_sidebar() -> None:
         </div>
         """, unsafe_allow_html=True)
         st.divider()
+        st.caption(
+            f"Signed in: {st.session_state.authenticated_user} "
+            f"({st.session_state.authenticated_role})"
+        )
+        if st.button("Sign out", use_container_width=True):
+            st.session_state.authenticated_user = None
+            st.session_state.authenticated_role = None
+            st.rerun()
 
         # API connection
         with st.expander("⚙️ API Settings", expanded=False):
@@ -930,11 +1055,9 @@ def page_confidence() -> None:
         "Inspect the evidence for each extracted edge before approving or rejecting it. "
         "Approval confirms the edge at 95%; rejection requires a reason."
     )
-    reviewer = st.text_input(
-        "Owner / reviewer",
-        key="confidence_reviewer",
-        placeholder="e.g. owner@company.com",
-    ).strip()
+    reviewer = st.session_state.authenticated_user
+    role = st.session_state.authenticated_role
+    st.caption(f"Reviewer: {reviewer} · Role: {role}")
     lineage = _api_call(client().get_lineage, run_id)
     nodes_by_id = {
         node["id"]: node for node in (lineage or {}).get("nodes", [])
@@ -1003,6 +1126,7 @@ def page_confidence() -> None:
                         edge["id"],
                         "approve",
                         reviewer,
+                        role,
                     )
                 if result:
                     st.success("Lineage edge approved.")
@@ -1018,6 +1142,7 @@ def page_confidence() -> None:
                             edge["id"],
                             "reject",
                             reviewer,
+                            role,
                             reason,
                         )
                     if result:

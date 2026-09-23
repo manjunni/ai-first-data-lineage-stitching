@@ -18,6 +18,9 @@ class LineageApiClient:
     def health(self) -> dict:
         return self._get("/health")
 
+    def login(self, username: str, password: str) -> Optional[dict]:
+        return self._post("/auth/login", {"username": username, "password": password})
+
     def list_runs(self, status: Optional[str] = None) -> list[dict]:
         params = {"status": status} if status else {}
         return self._get("/runs", params=params) or []
@@ -95,11 +98,17 @@ class LineageApiClient:
         edge_id: str,
         decision: str,
         reviewer: str,
+        role: str,
         reason: str = "",
     ) -> Optional[dict]:
         return self._post(
             f"/runs/{run_id}/lineage/edges/{edge_id}/review",
-            {"decision": decision, "reviewer": reviewer, "reason": reason or None},
+            {
+                "decision": decision,
+                "reviewer": reviewer,
+                "role": role,
+                "reason": reason or None,
+            },
         )
 
     # ------------------------------------------------------------------

@@ -104,6 +104,25 @@ def test_health_returns_ok():
     assert "catalog_config" in data
 
 
+def test_lineage_review_accepts_initial_authenticated_approval(client):
+    c, (mock, run_id, state) = client
+    edge = state["lineage_graph"].edges[0]
+    with patch(
+        "src.auth.settings.lineage_users_json",
+        '{"analyst@company.com":{"password":"change-me","role":"Analyst"}}',
+    ):
+        resp = c.post(
+            f"/runs/{run_id}/lineage/edges/{edge.id}/review",
+            json={
+                "decision": "approve",
+                "reviewer": "analyst@company.com",
+                "role": "Analyst",
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["review_status"] == "approved"
+
+
 # ===========================================================================
 # POST /runs — start a run
 # ===========================================================================

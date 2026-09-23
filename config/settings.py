@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     cosmos_container: str = "checkpoints"
 
     max_sme_iterations: int = 3
+    lineage_users_json: str = ""
 
     # Alation
     alation_base_url: str = ""           # e.g. https://your-org.alationcloud.com

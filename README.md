@@ -82,6 +82,19 @@ cp .env.example .env
 # Fill in Azure OpenAI, ACS email, Alation/Collibra credentials
 ```
 
+Configure role-based human approval users with `LINEAGE_USERS_JSON`. Passwords
+are read from the environment and are not stored in lineage data:
+
+```dotenv
+LINEAGE_USERS_JSON={"owner@company.com":{"password":"change-me","role":"Data Owner"},"steward@company.com":{"password":"change-me","role":"Domain Steward"},"sme@company.com":{"password":"change-me","role":"SME"},"analyst@company.com":{"password":"change-me","role":"Analyst"}}
+```
+
+The Streamlit app requires login before showing the agent. Missing-lineage edge
+approvals use the hierarchy **Data Owner > Domain Steward > SME > Analyst**.
+Every authenticated role may make an initial decision; a higher-ranked role may
+override a lower-ranked decision, but a lower-ranked role cannot override a
+higher-ranked one.
+
 ### 2. Install dependencies
 
 ```bash
