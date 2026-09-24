@@ -139,6 +139,20 @@ def _apply_raise_styles() -> None:
             background-color: #4a3587 !important;
         }
 
+        /* ── Button tooltips ── */
+        [data-testid="stTooltip"],
+        [data-testid="stTooltipContent"],
+        div[data-baseweb="popover"] [role="tooltip"] {
+            background-color: #ffffff !important;
+            color: #1e123a !important;
+            border: 1px solid #d9d3eb !important;
+        }
+        [data-testid="stTooltip"] *,
+        [data-testid="stTooltipContent"] *,
+        div[data-baseweb="popover"] [role="tooltip"] * {
+            color: #1e123a !important;
+        }
+
         /* ── Expanders ── */
         div[data-testid="stExpander"] {
             background-color: #1e123a !important;
