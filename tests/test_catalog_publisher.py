@@ -141,12 +141,12 @@ class TestAlationPayload:
         for item in p["lineage"]:
             assert "my-run-42" in item["dataflow"]["external_id"]
 
-    def test_transformation_in_dataflow_name(self):
+    def test_table_names_are_used_in_dataflow_name(self):
         src = _node("a", full_path="a")
         tgt = _node("b", full_path="b")
         g = _graph(src, tgt, _edge(src, tgt, transformation="filtered, aggregated"))
         p = _graph_to_alation_payload(g, "r")
-        assert "filtered" in p["lineage"][0]["dataflow"]["name"]
+        assert p["lineage"][0]["dataflow"]["name"] == "a → b"
 
     def test_sme_approval_in_description(self):
         src = _node("a", full_path="a")
@@ -246,6 +246,26 @@ class TestCollibraPayload:
         )
         assert p["relations"][0]["column_mappings"][0]["source_column"] == "customer_id"
         assert p["relations"][0]["column_mappings"][0]["confidence_level"] == "high"
+
+    def test_collibra_relation_publish_request_includes_column_mappings(self):
+        src = _node("customers", full_path="silver.customers")
+        tgt = _node("orders", full_path="gold.orders")
+        mapping = ColumnMapping(
+            source_column="customer_id",
+            target_column="customer_id",
+            transformation="cast(customer_id as bigint)",
+        )
+        graph = _graph(src, tgt, _edge(src, tgt, column_mappings=[mapping]))
+        publisher = CollibraPublisher()
+        publisher.validate_config = MagicMock(return_value=[])
+        client = MagicMock()
+        client.upsert_asset.side_effect = lambda asset: {"id": asset["external_id"]}
+        with patch("src.catalog.publisher._CollibraClient", return_value=client):
+            result = publisher.publish(graph, "r")
+
+        assert result.status == "published"
+        relation_request = client.create_relation.call_args.args[0]
+        assert relation_request["column_mappings"][0]["source_column"] == "customer_id"
 
     def test_rejected_edge_does_not_serialize_column_mappings(self):
         src = _node("a", full_path="a")

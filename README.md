@@ -189,6 +189,12 @@ Scores are assigned at finalization (not at parse time) so they reflect the full
   Edge-level SME approval is inherited by its column mappings in API and
   catalog responses; mapping-level approval metadata takes precedence when
   present.
+- The Publish page renders Collibra column mappings in a dedicated **Column
+  lineage** table alongside the raw assets and relations payload. Live Collibra
+  relation requests also include the serialized `column_mappings` list.
+- Publish payload preview headings use the source and target table/node names;
+  transformation text remains in the payload details instead of replacing
+  those headings.
 
 ---
 

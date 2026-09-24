@@ -231,6 +231,7 @@ class CollibraPublisher(CatalogPublisher):
                         "targetId":  tgt_collibra,
                         "typeId":    settings.collibra_lineage_type_id,
                         "description": rel.get("description", ""),
+                        "column_mappings": rel.get("column_mappings", []),
                     })
                 except Exception as exc:
                     errors.append(f"Relation {src_collibra}→{tgt_collibra}: {exc}")
@@ -321,7 +322,7 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
         item = {
             "dataflow": {
                 "external_id": f"lineage_agent_{run_id}_{edge.id[:8]}",
-                "name": edge.transformation or f"{src.name} → {tgt.name}",
+                "name": f"{src.name} → {tgt.name}",
                 "description": (
                     f"Confidence: {edge.confidence:.0%}. "
                     f"Evidence: {edge.evidence or 'none'}. "

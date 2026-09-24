@@ -312,7 +312,7 @@ def render_login() -> None:
         "<div style='font-size:1.05rem; font-weight:600; color:#1e123a;'>"
         "Insights &amp; Data"
         "</div>"
-        "<div style='color:#1e123a;'>Sign in to review and approve lineage</div>"
+        "<div style='color:#1e123a;'>Sign in to Data Lineage Stitching Agent </div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -1107,8 +1107,8 @@ def page_publish() -> None:
     )
     if not lineage_approved:
         st.warning(
-            "Publishing is locked until every lineage edge is approved by an "
-            "SME, Domain Steward, or Data Owner."
+            "Publishing is locked until every lineage edge is approved by a "
+            "Data Owner."
         )
 
     # Compute catalog_ready BEFORE rendering the columns so the button's
@@ -1208,9 +1208,57 @@ def _render_publish_result(result: dict) -> None:
             st.subheader(f"📦 Collibra payload — {len(assets)} assets, {len(relations)} relations")
             tab_a, tab_r = st.tabs(["Assets", "Relations"])
             with tab_a:
-                st.json(assets)
+                for asset in assets:
+                    with st.expander(
+                        f"🔹 {asset.get('name') or asset.get('full_path') or 'Unnamed asset'}",
+                        expanded=False,
+                    ):
+                        st.json(asset)
             with tab_r:
-                st.json(relations)
+                asset_names = {
+                    asset.get("external_id"): (
+                        asset.get("name") or asset.get("full_path") or "Unknown node"
+                    )
+                    for asset in assets
+                }
+                for relation in relations:
+                    source_name = asset_names.get(
+                        relation.get("source_external_id"), "Unknown source"
+                    )
+                    target_name = asset_names.get(
+                        relation.get("target_external_id"), "Unknown target"
+                    )
+                    with st.expander(
+                        f"🔗 {source_name} → {target_name}",
+                        expanded=False,
+                    ):
+                        st.json(relation)
+                column_rows = []
+                for relation in relations:
+                    for mapping in relation.get("column_mappings", []):
+                        column_rows.append({
+                            "Source column": mapping.get("source_column", "—"),
+                            "Target column": mapping.get("target_column", "—"),
+                            "Transformation": mapping.get("transformation")
+                            or "direct mapping",
+                            "Confidence": (
+                                f'{mapping.get("confidence", 0):.0%}'
+                            ),
+                            "Level": mapping.get("confidence_level", "low"),
+                            "Evidence": mapping.get("evidence") or "—",
+                            "SME approved by": (
+                                mapping.get("sme_approved_by") or "—"
+                            ),
+                        })
+                if column_rows:
+                    st.subheader("🔗 Column lineage")
+                    st.dataframe(
+                        pd.DataFrame(column_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No column-level mappings are present in the Collibra payload.")
         else:
             with st.expander("📦 Full payload"):
                 st.json(payload)
