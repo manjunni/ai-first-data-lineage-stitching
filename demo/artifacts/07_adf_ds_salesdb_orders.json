@@ -1,0 +1,14 @@
+{
+  "name": "salesdb_orders",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_azuresql_salesdb",
+      "type": "LinkedServiceReference"
+    },
+    "type": "AzureSqlTable",
+    "typeProperties": {
+      "schema": "dbo",
+      "table": "orders"
+    }
+  }
+}

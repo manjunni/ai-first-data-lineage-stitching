@@ -1,0 +1,99 @@
+{
+  "name": "pl_ingest_sales_daily",
+  "properties": {
+    "description": "Nightly: POS exports -> SQL sales DW, then sales DW orders -> Databricks bronze.",
+    "activities": [
+      {
+        "name": "Copy_Orders_ToDW",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 2
+        },
+        "typeProperties": {
+          "source": {
+            "type": "ParquetSource"
+          },
+          "sink": {
+            "type": "AzureSqlSink"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "pos_export_orders",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "salesdb_orders",
+            "type": "DatasetReference"
+          }
+        ]
+      },
+      {
+        "name": "Copy_Customers_ToDW",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 2
+        },
+        "typeProperties": {
+          "source": {
+            "type": "ParquetSource"
+          },
+          "sink": {
+            "type": "AzureSqlSink"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "pos_export_customers",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "salesdb_customers",
+            "type": "DatasetReference"
+          }
+        ]
+      },
+      {
+        "name": "Copy_Orders_ToLakehouse",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 2
+        },
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource"
+          },
+          "sink": {
+            "type": "DatabricksDeltaLakeSink"
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "salesdb_orders",
+            "type": "DatasetReference"
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "bronze_orders_raw",
+            "type": "DatasetReference"
+          }
+        ]
+      }
+    ],
+    "annotations": [
+      "domain:sales",
+      "owner:data-engineering"
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "answers": [
+    {
+      "id": "A1",
+      "gap_type": "missing_source",
+      "match": [
+        "'customers_raw'"
+      ],
+      "persona": "Marcus Oyelaran, Data Engineering Lead",
+      "file": "A1_customers_raw_source.txt",
+      "answer": "bronze.customers_raw is loaded nightly by the legacy customer-sync job, which copies the Azure SQL table dbo.customers from the sales DW into Databricks. The source is dbo.customers (Azure SQL)."
+    },
+    {
+      "id": "A2",
+      "gap_type": "missing_source",
+      "match": [
+        "'returns_raw'"
+      ],
+      "persona": "Marcus Oyelaran, Data Engineering Lead",
+      "file": "A2_returns_raw_source.txt",
+      "answer": "Returns arrive as a daily CSV drop from the returns portal vendor into ADLS at abfss://landing@harborlake.dfs.core.windows.net/returns and Auto Loader ingests it into bronze.returns_raw. The source system is Azure Data Lake Storage."
+    },
+    {
+      "id": "A3",
+      "gap_type": "missing_source",
+      "match": [
+        "'revenue_adjustments'"
+      ],
+      "persona": "Elena Brandt, Finance Systems",
+      "file": "A3_revenue_adjustments_source.docx",
+      "answer": "Finance prepares a monthly credit-note and accrual workbook in Excel. A Power Automate flow lands it in ADLS at abfss://finance@harborlake.dfs.core.windows.net/gl_adjustments and a Databricks job loads it into finance.revenue_adjustments. The source system is Azure Data Lake Storage."
+    },
+    {
+      "id": "A4",
+      "gap_type": "low_confidence_edge",
+      "match": [
+        "'orders_clean'",
+        "'orders_adjusted'"
+      ],
+      "persona": "Marcus Oyelaran, Data Engineering Lead",
+      "file": "A4_confirm_orders_clean_to_orders_adjusted.txt",
+      "answer": "Yes, confirmed. orders_clean feeds orders_adjusted in the finance adjustments notebook (the table names come from the job config)."
+    },
+    {
+      "id": "A5",
+      "gap_type": "low_confidence_edge",
+      "match": [
+        "'revenue_adjustments'",
+        "'orders_adjusted'"
+      ],
+      "persona": "Elena Brandt, Finance Systems",
+      "file": "A5_confirm_adjustments_to_orders_adjusted.xlsx",
+      "answer": "Yes, correct. The adjustments table is left-joined on order_id and adjustment_amount is added to net_amount."
+    },
+    {
+      "id": "A6",
+      "gap_type": "missing_target",
+      "match": [
+        "'gold_net_revenue_by_segment'"
+      ],
+      "persona": "Marcus Oyelaran, Data Engineering Lead",
+      "file": "A6_gold_to_power_bi.txt",
+      "answer": "Yes. gold_net_revenue_by_segment feeds the Power BI dataset 'Executive Net Revenue' (workspace Finance-Exec), which drives the CFO dashboard. The target system is Power BI."
+    },
+    {
+      "id": "A7",
+      "gap_type": "missing_target",
+      "match": [
+        "'daily_sales_summary'"
+      ],
+      "persona": "Elena Brandt, Finance Systems",
+      "file": "A7_legacy_summary_to_ssrs.txt",
+      "answer": "Yes. reporting.daily_sales_summary feeds the SSRS report 'Monthly Revenue Pack', which Finance still reconciles against. The target system is a BI reporting tool (SSRS)."
+    }
+  ]
+}

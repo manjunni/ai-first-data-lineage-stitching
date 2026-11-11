@@ -1,0 +1,14 @@
+{
+  "name": "bronze_orders_raw",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_databricks_harborline",
+      "type": "LinkedServiceReference"
+    },
+    "type": "AzureDatabricksDeltaLakeDataset",
+    "typeProperties": {
+      "database": "harborline.bronze",
+      "table": "orders_raw"
+    }
+  }
+}

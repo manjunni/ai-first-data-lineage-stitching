@@ -50,6 +50,7 @@ data/
 *.csv
 *.parquet
 *.json
+!demo/**/*.json
 
 # -----------------------------
 # ML / Model files

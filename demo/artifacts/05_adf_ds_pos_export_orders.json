@@ -1,0 +1,17 @@
+{
+  "name": "pos_export_orders",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_adls_harborlake",
+      "type": "LinkedServiceReference"
+    },
+    "type": "Parquet",
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": "pos-export",
+        "folderPath": "orders"
+      }
+    }
+  }
+}
