@@ -1,0 +1,90 @@
+flowchart LR
+
+    classDef adls fill:#4472C4,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef databricks fill:#FF8C00,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef sql fill:#70AD47,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef dlt fill:#7030A0,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef adf fill:#ED7D31,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef bi fill:#FFC000,color:#000000,stroke:#333,stroke-width:1px
+    classDef unknown fill:#A6A6A6,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef gap fill:#FF0000,color:#ffffff,stroke:#990000,stroke-width:2px
+
+    subgraph ADLS
+        n98ad86a6_da24_4786_a471_3380868d602b["pos_export_orders
+[adls]"]
+        nc92bd330_d4b7_4b41_b5ad_f15373eb0527["pos_export_customers
+[adls]"]
+    end
+    subgraph DATABRICKS
+        n6c7b84ff_55f8_43d6_b6ac_5c5d81b798c2["customers_clean
+[databricks]"]
+        n05e6d623_b072_4dd8_a163_d10df12a61a8["customers_raw
+[databricks]"]
+        n5aec9e09_c2a2_4597_846b_43ac3c93f61b["orders_clean
+[databricks]"]
+        n34768194_4d15_48c8_b3c4_e559e0fc831c["orders_raw
+[databricks]"]
+        n84a4143d_02a8_4bf4_9ad3_e4b69eb8ff92["orders_adjusted
+[databricks]"]
+        nd4cae884_f674_41f5_a265_eec7ba736496["revenue_adjustments
+[databricks]"]
+        n4b09517e_b0b7_4b93_ab37_4e210a02de53["returns_raw
+[databricks]"]
+    end
+    subgraph DLT
+        n1c385565_6226_410d_8a38_e9f7c11d9be7["silver_order_enriched
+[dlt]"]
+        nd7541ce0_7283_4682_af65_f82d18bfa0e1["gold_net_revenue_by_segment
+[dlt]"]
+    end
+    subgraph SQL
+        na406d9e0_9298_4a2c_867d_fabd820f9f0c["daily_sales_summary
+[sql]"]
+        n2f8499b9_02d2_4143_b362_283aefe4ff3c["orders
+[sql]"]
+        ndf787aed_4b11_4df0_984e_028612ed1306["customers
+[sql]"]
+    end
+
+    n05e6d623_b072_4dd8_a163_d10df12a61a8 -->|"filtered, 2 computed column(s) | 90%"| n6c7b84ff_55f8_43d6_b6ac_5c5d81b798c2
+    n34768194_4d15_48c8_b3c4_e559e0fc831c -->|"filtered, columns computed | 85%"| n5aec9e09_c2a2_4597_846b_43ac3c93f61b
+    n5aec9e09_c2a2_4597_846b_43ac3c93f61b ==>|"left join with finance adjustments; adds… | 60% | ⚠ gap"| n84a4143d_02a8_4bf4_9ad3_e4b69eb8ff92
+    nd4cae884_f674_41f5_a265_eec7ba736496 ==>|"left join on order_id; adjustment_amount… | 60% | ⚠ gap"| n84a4143d_02a8_4bf4_9ad3_e4b69eb8ff92
+    n84a4143d_02a8_4bf4_9ad3_e4b69eb8ff92 -->|"columns computed, joined | 85%"| n1c385565_6226_410d_8a38_e9f7c11d9be7
+    n6c7b84ff_55f8_43d6_b6ac_5c5d81b798c2 -->|"columns computed, joined | 85%"| n1c385565_6226_410d_8a38_e9f7c11d9be7
+    n4b09517e_b0b7_4b93_ab37_4e210a02de53 -->|"columns computed, joined | 85%"| n1c385565_6226_410d_8a38_e9f7c11d9be7
+    n1c385565_6226_410d_8a38_e9f7c11d9be7 -->|"aggregated | 90%"| nd7541ce0_7283_4682_af65_f82d18bfa0e1
+    n2f8499b9_02d2_4143_b362_283aefe4ff3c -->|"filtered, aggregated, 1 join(s), 1 compu… | 90%"| na406d9e0_9298_4a2c_867d_fabd820f9f0c
+    ndf787aed_4b11_4df0_984e_028612ed1306 -->|"filtered, aggregated, 1 join(s), 1 compu… | 90%"| na406d9e0_9298_4a2c_867d_fabd820f9f0c
+    n98ad86a6_da24_4786_a471_3380868d602b .->|"copy: Copy_Orders_ToDW | 80%"| n2f8499b9_02d2_4143_b362_283aefe4ff3c
+    nc92bd330_d4b7_4b41_b5ad_f15373eb0527 .->|"copy: Copy_Customers_ToDW | 80%"| ndf787aed_4b11_4df0_984e_028612ed1306
+    n2f8499b9_02d2_4143_b362_283aefe4ff3c .->|"copy: Copy_Orders_ToLakehouse | 80%"| n34768194_4d15_48c8_b3c4_e559e0fc831c
+
+    linkStyle 0 stroke:#70AD47,stroke-width:2px
+    linkStyle 1 stroke:#70AD47,stroke-width:2px
+    linkStyle 2 stroke:#FF3333,stroke-width:3px
+    linkStyle 3 stroke:#FF3333,stroke-width:3px
+    linkStyle 4 stroke:#70AD47,stroke-width:2px
+    linkStyle 5 stroke:#70AD47,stroke-width:2px
+    linkStyle 6 stroke:#70AD47,stroke-width:2px
+    linkStyle 7 stroke:#70AD47,stroke-width:2px
+    linkStyle 8 stroke:#70AD47,stroke-width:2px
+    linkStyle 9 stroke:#70AD47,stroke-width:2px
+    linkStyle 10 stroke:#FFC000,stroke-width:2px
+    linkStyle 11 stroke:#FFC000,stroke-width:2px
+    linkStyle 12 stroke:#FFC000,stroke-width:2px
+
+    class n6c7b84ff_55f8_43d6_b6ac_5c5d81b798c2 databricks
+    class n05e6d623_b072_4dd8_a163_d10df12a61a8 gap
+    class n5aec9e09_c2a2_4597_846b_43ac3c93f61b databricks
+    class n34768194_4d15_48c8_b3c4_e559e0fc831c databricks
+    class n84a4143d_02a8_4bf4_9ad3_e4b69eb8ff92 databricks
+    class nd4cae884_f674_41f5_a265_eec7ba736496 gap
+    class n1c385565_6226_410d_8a38_e9f7c11d9be7 dlt
+    class n4b09517e_b0b7_4b93_ab37_4e210a02de53 gap
+    class nd7541ce0_7283_4682_af65_f82d18bfa0e1 gap
+    class na406d9e0_9298_4a2c_867d_fabd820f9f0c gap
+    class n2f8499b9_02d2_4143_b362_283aefe4ff3c sql
+    class ndf787aed_4b11_4df0_984e_028612ed1306 sql
+    class n98ad86a6_da24_4786_a471_3380868d602b adls
+    class nc92bd330_d4b7_4b41_b5ad_f15373eb0527 adls

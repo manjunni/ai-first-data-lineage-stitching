@@ -1,0 +1,114 @@
+flowchart LR
+
+    classDef adls fill:#4472C4,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef databricks fill:#FF8C00,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef sql fill:#70AD47,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef dlt fill:#7030A0,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef adf fill:#ED7D31,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef bi fill:#FFC000,color:#000000,stroke:#333,stroke-width:1px
+    classDef unknown fill:#A6A6A6,color:#ffffff,stroke:#333,stroke-width:1px
+    classDef gap fill:#FF0000,color:#ffffff,stroke:#990000,stroke-width:2px
+
+    subgraph ADLS
+        nc6e46961_26c6_4c7c_a9d3_64fb1db28b65["pos_export_orders
+[adls]"]
+        n550eb3f2_9a59_4c9b_b034_6b5fb9b99b58["pos_export_customers
+[adls]"]
+        n58a080af_0e84_4b44_8192_85726bd776ca["returns
+[adls]"]
+        n2bef774a_7065_4f98_8531_2e9d7d525295["gl_adjustments
+[adls]"]
+    end
+    subgraph BI
+        n6cc2e82b_0a9d_4b70_99a0_ee556b97b1ff["Executive Net Revenue
+[bi]"]
+        n9b619569_e89d_41f7_ae8f_8dc1ab6714b0["Monthly Revenue Pack
+[bi]"]
+    end
+    subgraph DATABRICKS
+        n7ed1bb5b_efdb_4e7d_addf_92cb0092a95f["customers_clean
+[databricks]"]
+        n1b049441_8e43_41f5_a255_1cca23070e14["customers_raw
+[databricks]"]
+        nf1315a8a_ab85_49cc_bd0f_d5645a72bdc8["orders_clean
+[databricks]"]
+        nf066e51e_0f04_4372_a014_065bf08db945["orders_raw
+[databricks]"]
+        na75aac71_fc5c_4bea_8a86_3707e11cb167["orders_adjusted
+[databricks]"]
+        nd3b2611a_6f4b_40c6_8c4e_648bc3103ad8["revenue_adjustments
+[databricks]"]
+        nb355d154_c7dd_4840_a0c3_0b2f83ab6ccb["returns_raw
+[databricks]"]
+    end
+    subgraph DLT
+        n97fba0d3_6ad6_4bb9_9ddb_f49797416a88["silver_order_enriched
+[dlt]"]
+        nec729fb7_b863_4621_abe3_f4b70e85a39c["gold_net_revenue_by_segment
+[dlt]"]
+    end
+    subgraph SQL
+        n33727812_f71f_490f_a529_a77b91d08edb["daily_sales_summary
+[sql]"]
+        n61253269_0d1b_4f53_a541_2d563bc9955e["orders
+[sql]"]
+        n5501606d_97a4_4762_a146_ade7eaa52741["customers
+[sql]"]
+    end
+
+    n1b049441_8e43_41f5_a255_1cca23070e14 -->|"filtered, 2 computed column(s) | 90%"| n7ed1bb5b_efdb_4e7d_addf_92cb0092a95f
+    nf066e51e_0f04_4372_a014_065bf08db945 -->|"filtered, columns computed | 85%"| nf1315a8a_ab85_49cc_bd0f_d5645a72bdc8
+    nf1315a8a_ab85_49cc_bd0f_d5645a72bdc8 -->|"left join with finance adjustments; adds… | 95%"| na75aac71_fc5c_4bea_8a86_3707e11cb167
+    nd3b2611a_6f4b_40c6_8c4e_648bc3103ad8 -->|"left join on order_id; adjustment_amount… | 95%"| na75aac71_fc5c_4bea_8a86_3707e11cb167
+    na75aac71_fc5c_4bea_8a86_3707e11cb167 -->|"columns computed, joined | 85%"| n97fba0d3_6ad6_4bb9_9ddb_f49797416a88
+    n7ed1bb5b_efdb_4e7d_addf_92cb0092a95f -->|"columns computed, joined | 85%"| n97fba0d3_6ad6_4bb9_9ddb_f49797416a88
+    nb355d154_c7dd_4840_a0c3_0b2f83ab6ccb -->|"columns computed, joined | 85%"| n97fba0d3_6ad6_4bb9_9ddb_f49797416a88
+    n97fba0d3_6ad6_4bb9_9ddb_f49797416a88 -->|"aggregated | 90%"| nec729fb7_b863_4621_abe3_f4b70e85a39c
+    n61253269_0d1b_4f53_a541_2d563bc9955e -->|"filtered, aggregated, 1 join(s), 1 compu… | 90%"| n33727812_f71f_490f_a529_a77b91d08edb
+    n5501606d_97a4_4762_a146_ade7eaa52741 -->|"filtered, aggregated, 1 join(s), 1 compu… | 90%"| n33727812_f71f_490f_a529_a77b91d08edb
+    nc6e46961_26c6_4c7c_a9d3_64fb1db28b65 .->|"copy: Copy_Orders_ToDW | 80%"| n61253269_0d1b_4f53_a541_2d563bc9955e
+    n550eb3f2_9a59_4c9b_b034_6b5fb9b99b58 .->|"copy: Copy_Customers_ToDW | 80%"| n5501606d_97a4_4762_a146_ade7eaa52741
+    n61253269_0d1b_4f53_a541_2d563bc9955e .->|"copy: Copy_Orders_ToLakehouse | 80%"| nf066e51e_0f04_4372_a014_065bf08db945
+    n5501606d_97a4_4762_a146_ade7eaa52741 -->|"SME confirmed: bronze.customers_raw is l… | 95%"| n1b049441_8e43_41f5_a255_1cca23070e14
+    n58a080af_0e84_4b44_8192_85726bd776ca -->|"SME confirmed: Returns arrive as a daily… | 95%"| nb355d154_c7dd_4840_a0c3_0b2f83ab6ccb
+    n2bef774a_7065_4f98_8531_2e9d7d525295 -->|"SME confirmed: Finance prepares a monthl… | 95%"| nd3b2611a_6f4b_40c6_8c4e_648bc3103ad8
+    nec729fb7_b863_4621_abe3_f4b70e85a39c -->|"SME confirmed: Yes. gold_net_revenue_by_… | 95%"| n6cc2e82b_0a9d_4b70_99a0_ee556b97b1ff
+    n33727812_f71f_490f_a529_a77b91d08edb -->|"SME confirmed: Yes. reporting.daily_sale… | 95%"| n9b619569_e89d_41f7_ae8f_8dc1ab6714b0
+
+    linkStyle 0 stroke:#70AD47,stroke-width:2px
+    linkStyle 1 stroke:#70AD47,stroke-width:2px
+    linkStyle 2 stroke:#4472C4,stroke-width:3px
+    linkStyle 3 stroke:#4472C4,stroke-width:3px
+    linkStyle 4 stroke:#70AD47,stroke-width:2px
+    linkStyle 5 stroke:#70AD47,stroke-width:2px
+    linkStyle 6 stroke:#70AD47,stroke-width:2px
+    linkStyle 7 stroke:#70AD47,stroke-width:2px
+    linkStyle 8 stroke:#70AD47,stroke-width:2px
+    linkStyle 9 stroke:#70AD47,stroke-width:2px
+    linkStyle 10 stroke:#FFC000,stroke-width:2px
+    linkStyle 11 stroke:#FFC000,stroke-width:2px
+    linkStyle 12 stroke:#FFC000,stroke-width:2px
+    linkStyle 13 stroke:#4472C4,stroke-width:3px
+    linkStyle 14 stroke:#4472C4,stroke-width:3px
+    linkStyle 15 stroke:#4472C4,stroke-width:3px
+    linkStyle 16 stroke:#4472C4,stroke-width:3px
+    linkStyle 17 stroke:#4472C4,stroke-width:3px
+
+    class n7ed1bb5b_efdb_4e7d_addf_92cb0092a95f databricks
+    class n1b049441_8e43_41f5_a255_1cca23070e14 databricks
+    class nf1315a8a_ab85_49cc_bd0f_d5645a72bdc8 databricks
+    class nf066e51e_0f04_4372_a014_065bf08db945 databricks
+    class na75aac71_fc5c_4bea_8a86_3707e11cb167 databricks
+    class nd3b2611a_6f4b_40c6_8c4e_648bc3103ad8 databricks
+    class n97fba0d3_6ad6_4bb9_9ddb_f49797416a88 dlt
+    class nb355d154_c7dd_4840_a0c3_0b2f83ab6ccb databricks
+    class nec729fb7_b863_4621_abe3_f4b70e85a39c dlt
+    class n33727812_f71f_490f_a529_a77b91d08edb sql
+    class n61253269_0d1b_4f53_a541_2d563bc9955e sql
+    class n5501606d_97a4_4762_a146_ade7eaa52741 sql
+    class nc6e46961_26c6_4c7c_a9d3_64fb1db28b65 adls
+    class n550eb3f2_9a59_4c9b_b034_6b5fb9b99b58 adls
+    class n58a080af_0e84_4b44_8192_85726bd776ca adls
+    class n2bef774a_7065_4f98_8531_2e9d7d525295 adls
+    class n6cc2e82b_0a9d_4b70_99a0_ee556b97b1ff bi
+    class n9b619569_e89d_41f7_ae8f_8dc1ab6714b0 bi

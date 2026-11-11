@@ -1,0 +1,7 @@
+Subject: Re: [Lineage Agent] Run <run-id> - Input needed for data lineage review
+
+Copy the [REF:...] marker from each question in the email exactly, then type your answer after the colon.
+One reply can answer many questions; the agent matches each answer to its gap by the marker.
+
+[REF:<gap-id-1>]: bronze.customers_raw is loaded nightly from the Azure SQL table dbo.customers.
+[REF:<gap-id-2>]: Yes, confirmed.

@@ -1,0 +1,1 @@
+Yes, confirmed. orders_clean feeds orders_adjusted in the finance adjustments notebook (the table names come from the job config).

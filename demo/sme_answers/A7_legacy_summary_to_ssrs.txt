@@ -1,0 +1,1 @@
+Yes. reporting.daily_sales_summary feeds the SSRS report 'Monthly Revenue Pack', which Finance still reconciles against. The target system is a BI reporting tool (SSRS).

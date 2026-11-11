@@ -1,0 +1,1 @@
+Returns arrive as a daily CSV drop from the returns portal vendor into ADLS at abfss://landing@harborlake.dfs.core.windows.net/returns and Auto Loader ingests it into bronze.returns_raw. The source system is Azure Data Lake Storage.

@@ -1,0 +1,1 @@
+bronze.customers_raw is loaded nightly by the legacy customer-sync job, which copies the Azure SQL table dbo.customers from the sales DW into Databricks. The source is dbo.customers (Azure SQL).

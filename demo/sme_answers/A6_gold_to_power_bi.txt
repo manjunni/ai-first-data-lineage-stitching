@@ -1,0 +1,1 @@
+Yes. gold_net_revenue_by_segment feeds the Power BI dataset 'Executive Net Revenue' (workspace Finance-Exec), which drives the CFO dashboard. The target system is Power BI.
