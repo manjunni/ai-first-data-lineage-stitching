@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -14,6 +15,24 @@ from src.graph.models import (
 from config.settings import settings
 
 _ADF_NS = "adf://"
+
+# Storage URIs an SME may paste into a reply (ADLS Gen2 / Blob).
+_STORAGE_URI_RE = re.compile(r"\b(?:abfss?|wasbs?)://[^\s,;'\"()<>]+", re.IGNORECASE)
+
+# Free-text system names the LLM may return instead of the enum value.
+_SYSTEM_ALIASES = {
+    "adls": SystemType.ADLS, "adls gen2": SystemType.ADLS, "adlsgen2": SystemType.ADLS,
+    "azure data lake": SystemType.ADLS, "azure data lake storage": SystemType.ADLS,
+    "azure data lake storage gen2": SystemType.ADLS, "data lake": SystemType.ADLS,
+    "blob": SystemType.ADLS, "azure blob storage": SystemType.ADLS,
+    "databricks": SystemType.DATABRICKS, "azure databricks": SystemType.DATABRICKS,
+    "dlt": SystemType.DLT, "delta live tables": SystemType.DLT,
+    "adf": SystemType.ADF, "azure data factory": SystemType.ADF, "data factory": SystemType.ADF,
+    "sql": SystemType.SQL, "azure sql": SystemType.SQL, "sql server": SystemType.SQL,
+    "azure sql database": SystemType.SQL, "synapse": SystemType.SQL,
+    "bi": SystemType.BI, "power bi": SystemType.BI, "powerbi": SystemType.BI,
+    "ssrs": SystemType.BI, "tableau": SystemType.BI,
+}
 
 _EXTRACT_SYSTEM_PROMPT = """\
 You are a data lineage expert parsing a subject matter expert's reply to a lineage question.
@@ -126,7 +145,10 @@ def _extract_structured_answer(
             SystemMessage(content=_EXTRACT_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
         ])
-        return json.loads(response.content)
+        content = response.content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
+        return json.loads(content)
     except Exception:
         # Fall back to a minimal structure so graph update can still proceed
         return {
@@ -162,13 +184,14 @@ def _handle_missing_source(
     gap: Gap, s: dict, graph: LineageGraph, sme_email: str, raw_answer: str,
 ) -> None:
     """SME provided the source → add a new node + edge to the graph."""
-    path = s.get("primary_value")
-    system = _parse_system(s.get("system_type"))
     target_node = graph.nodes.get(gap.node_id or "")
-    if not target_node or not path:
+    if not target_node:
+        return
+    resolved = _resolve_endpoint(s, raw_answer, graph, exclude=target_node)
+    if not resolved:
         return
 
-    src_node = _find_or_create_node(path, system, graph)
+    src_node = _find_or_create_node(*resolved, graph)
     _add_sme_edge(src_node, target_node, graph, sme_email,
                   transformation=f"SME confirmed: {raw_answer[:120]}")
 
@@ -177,13 +200,14 @@ def _handle_missing_target(
     gap: Gap, s: dict, graph: LineageGraph, sme_email: str, raw_answer: str,
 ) -> None:
     """SME provided the downstream target → add a new node + edge."""
-    path = s.get("primary_value")
-    system = _parse_system(s.get("system_type"))
     source_node = graph.nodes.get(gap.node_id or "")
-    if not source_node or not path:
+    if not source_node:
+        return
+    resolved = _resolve_endpoint(s, raw_answer, graph, exclude=source_node)
+    if not resolved:
         return
 
-    tgt_node = _find_or_create_node(path, system, graph)
+    tgt_node = _find_or_create_node(*resolved, graph)
     _add_sme_edge(source_node, tgt_node, graph, sme_email,
                   transformation=f"SME confirmed: {raw_answer[:120]}")
 
@@ -306,10 +330,50 @@ _HANDLERS = {
 # ---------------------------------------------------------------------------
 
 def _parse_system(system_str: Optional[str]) -> SystemType:
-    try:
-        return SystemType(system_str or "unknown")
-    except ValueError:
+    key = " ".join((system_str or "").strip().lower().replace("_", " ").split())
+    if not key:
         return SystemType.UNKNOWN
+    try:
+        return SystemType(key)
+    except ValueError:
+        return _SYSTEM_ALIASES.get(key, SystemType.UNKNOWN)
+
+
+def _resolve_endpoint(
+    s: dict, raw_answer: str, graph: LineageGraph, exclude: LineageNode,
+) -> Optional[tuple[str, SystemType]]:
+    """
+    Decide the (path, system) of the node the SME named for a missing source/target.
+
+    The LLM's extraction is used unless it is unusable, in which case a storage
+    URI quoted verbatim in the reply wins. Unusable means: no value, a bare
+    system name ("Azure Data Lake Storage"), or the very node the gap is about
+    (an answer like "lands in ADLS ... loads it into bronze.returns_raw").
+    """
+    path = (s.get("primary_value") or "").strip().rstrip(".")
+    system = _parse_system(s.get("system_type"))
+
+    uri_match = _STORAGE_URI_RE.search(raw_answer or "")
+    uri = uri_match.group(0).rstrip(".)") if uri_match else None
+
+    is_uri = "://" in path
+    is_system_name = _parse_system(path) != SystemType.UNKNOWN
+    is_self = bool(path) and path.lower() in {
+        exclude.full_path.lower(), exclude.name.lower(),
+        exclude.full_path.lower().split(".", 1)[-1],
+    }
+
+    if uri and (not path or is_system_name or is_self
+                or (not is_uri and system in (SystemType.ADLS, SystemType.UNKNOWN))):
+        path = uri
+    if not path or (is_self and path != uri):
+        return None
+    if _parse_system(path) != SystemType.UNKNOWN and "://" not in path:
+        return None  # only a system name and no location to attach it to
+
+    if path.lower().startswith(("abfss://", "abfs://", "wasbs://", "wasb://")):
+        system = SystemType.ADLS
+    return path, system
 
 
 def _find_or_create_node(path: str, system: SystemType, graph: LineageGraph) -> LineageNode:

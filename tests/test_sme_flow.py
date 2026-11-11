@@ -581,12 +581,74 @@ class TestApplyResponsesToGraph:
 # Helpers
 # ===========================================================================
 
+class TestMissingSourceLlmVariants:
+    """A reply naming an ADLS URI must yield an ADLS source node however the LLM phrases its extraction."""
+
+    RAW = ("Returns arrive as a daily CSV drop into ADLS at "
+           "abfss://landing@harborlake.dfs.core.windows.net/returns and Auto Loader ingests it "
+           "into bronze.returns_raw. The source system is Azure Data Lake Storage.")
+    URI = "abfss://landing@harborlake.dfs.core.windows.net/returns"
+
+    def _apply(self, structured: dict, raw: str | None = None):
+        tgt = _node("returns_raw", system=SystemType.DATABRICKS, full_path="harborline.bronze.returns_raw")
+        g = _graph(tgt)
+        tgt_id = list(g.nodes.keys())[0]
+        gap = _gap("missing_source", node_id=tgt_id)
+        base = {"answer_type": "source_path", "primary_value": None,
+                "system_type": "unknown", "confirmed": None, "notes": None}
+        with patch("src.sme.response_processor._get_llm", return_value=MagicMock()), \
+             patch("src.sme.response_processor._extract_structured_answer",
+                   return_value={**base, **structured}):
+            _, graph = apply_responses_to_graph(
+                [{"gap_id": gap.id, "sme_email": "sme@corp.com", "raw_answer": raw or self.RAW}], [gap], g)
+        return graph, tgt_id
+
+    def _assert_adls_source(self, graph, tgt_id):
+        srcs = [graph.nodes[e.source_id] for e in graph.edges if e.target_id == tgt_id]
+        assert len(srcs) == 1
+        assert srcs[0].full_path == self.URI
+        assert srcs[0].name == "returns"
+        assert srcs[0].system == SystemType.ADLS
+
+    @pytest.mark.parametrize("structured", [
+        {"primary_value": "abfss://landing@harborlake.dfs.core.windows.net/returns", "system_type": "adls"},
+        {"primary_value": "abfss://landing@harborlake.dfs.core.windows.net/returns", "system_type": "ADLS"},
+        {"primary_value": "abfss://landing@harborlake.dfs.core.windows.net/returns.",
+         "system_type": "Azure Data Lake Storage"},
+        {"answer_type": "system_type", "primary_value": "Azure Data Lake Storage", "system_type": "adls"},
+        {"answer_type": "system_type", "primary_value": "adls", "system_type": "adls"},
+        {"primary_value": None, "system_type": "adls"},
+        {"primary_value": "bronze.returns_raw", "system_type": "databricks"},
+        {"primary_value": "landing/returns", "system_type": "adls"},
+    ], ids=["exact", "upper-system", "long-system-trailing-dot", "system-name-as-value",
+            "enum-as-value", "no-value", "self-reference", "container-folder"])
+    def test_adls_uri_answer_creates_adls_source(self, structured):
+        self._assert_adls_source(*self._apply(structured))
+
+    def test_sql_source_unaffected_by_uri_logic(self):
+        graph, tgt_id = self._apply({"primary_value": "dbo.customers", "system_type": "Azure SQL"},
+                                    raw="It is copied from the Azure SQL table dbo.customers.")
+        src = next(graph.nodes[e.source_id] for e in graph.edges if e.target_id == tgt_id)
+        assert (src.full_path, src.system) == ("dbo.customers", SystemType.SQL)
+
+    def test_system_name_only_without_location_adds_nothing(self):
+        graph, _ = self._apply({"answer_type": "system_type", "primary_value": "Azure Data Lake Storage",
+                                "system_type": "adls"}, raw="It comes from Azure Data Lake Storage.")
+        assert graph.edges == []
+
+
 class TestHelpers:
 
     def test_parse_system_valid(self):
         assert _parse_system("databricks") == SystemType.DATABRICKS
         assert _parse_system("adls") == SystemType.ADLS
         assert _parse_system("sql") == SystemType.SQL
+
+    def test_parse_system_aliases(self):
+        assert _parse_system("ADLS") == SystemType.ADLS
+        assert _parse_system("Azure Data Lake Storage") == SystemType.ADLS
+        assert _parse_system("Power BI") == SystemType.BI
+        assert _parse_system("azure_sql") == SystemType.SQL
 
     def test_parse_system_invalid_returns_unknown(self):
         assert _parse_system("gibberish") == SystemType.UNKNOWN
