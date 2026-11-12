@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from src.graph.stewardship import stewardship_required
 from src.graph.models import LineageGraph, LineageNode, LineageEdge, ConfidenceLevel, SystemType, Gap
 
 _ADF_NS = "adf://"
@@ -19,6 +20,7 @@ _SYSTEM_COLOUR: dict[SystemType, tuple[str, str]] = {
     SystemType.DLT:         ("#7030A0", "#ffffff"),
     SystemType.ADF:         ("#ED7D31", "#ffffff"),
     SystemType.BI:          ("#FFC000", "#000000"),
+    SystemType.EXTERNAL:    ("#5B5B8F", "#ffffff"),
     SystemType.UNKNOWN:     ("#A6A6A6", "#ffffff"),
 }
 
@@ -30,6 +32,7 @@ _CLUSTER_BG: dict[SystemType, str] = {
     SystemType.DLT:         "#F5EEF8",
     SystemType.ADF:         "#FEF1E8",
     SystemType.BI:          "#FFFBE6",
+    SystemType.EXTERNAL:    "#EEEEF6",
     SystemType.UNKNOWN:     "#F5F5F5",
 }
 
@@ -49,6 +52,7 @@ _MERMAID_CLASS: dict[SystemType, str] = {
     SystemType.DLT:         "dlt",
     SystemType.ADF:         "adf",
     SystemType.BI:          "bi",
+    SystemType.EXTERNAL:    "external",
     SystemType.UNKNOWN:     "unknown",
 }
 
@@ -71,6 +75,7 @@ def generate_mermaid(
     """
     gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id and not g.resolved}
     gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id and not g.resolved}
+    steward_ids = set(stewardship_required(graph))
 
     lines: list[str] = ["flowchart LR"]
 
@@ -92,7 +97,7 @@ def generate_mermaid(
             lines.append(f"    subgraph {system.value.upper()}")
         for node_id, node in node_list:
             safe = _safe_id(node_id)
-            label = _display_label(node).replace('"', "'")
+            label = _display_label(node, node_id in steward_ids).replace('"', "'")
             lines.append(f'        {safe}["{label}"]')
         if len(by_system) > 1:
             lines.append("    end")
@@ -102,10 +107,11 @@ def generate_mermaid(
     edge_index = 0
     edge_styles: list[str] = []
 
+    contested = graph.contested_edge_ids()
     for edge in graph.edges:
         src = _safe_id(edge.source_id)
         tgt = _safe_id(edge.target_id)
-        label = _edge_label(edge, edge.id in gap_edge_ids)
+        label = _edge_label(edge, edge.id in gap_edge_ids, edge.id in contested)
         style = _mermaid_arrow(edge)
         lines.append(f'    {src} {style}|"{label}"| {tgt}')
         edge_styles.append(_mermaid_link_style(edge_index, edge, edge.id in gap_edge_ids))
@@ -140,6 +146,7 @@ def generate_graphviz_dot(
     """
     gap_node_ids: set[str] = {g.node_id for g in (gaps or []) if g.node_id and not g.resolved}
     gap_edge_ids: set[str] = {g.edge_id for g in (gaps or []) if g.edge_id and not g.resolved}
+    steward_ids = set(stewardship_required(graph))
 
     lines: list[str] = [
         "digraph lineage {",
@@ -166,7 +173,7 @@ def generate_graphviz_dot(
 
         for node_id, node in node_list:
             safe = _safe_id(node_id)
-            label = _display_label(node).replace('"', "'").replace("\n", "\\n")
+            label = _display_label(node, node_id in steward_ids).replace('"', "'").replace("\n", "\\n")
             node_fill = "#FF3333" if node_id in gap_node_ids else fill_colour
             _, font_colour = _SYSTEM_COLOUR[node.system]
             border = 'style="filled,dashed" penwidth=2' if node_id in gap_node_ids else "style=filled"
@@ -179,10 +186,11 @@ def generate_graphviz_dot(
         lines.append("")
 
     # Edges
+    contested = graph.contested_edge_ids()
     for edge in graph.edges:
         src = _safe_id(edge.source_id)
         tgt = _safe_id(edge.target_id)
-        label = _edge_label(edge, edge.id in gap_edge_ids).replace('"', "'")
+        label = _edge_label(edge, edge.id in gap_edge_ids, edge.id in contested).replace('"', "'")
         colour = "#FF3333" if edge.id in gap_edge_ids else _EDGE_COLOUR[edge.confidence_level]
         dot_style = _dot_edge_style(edge, edge.id in gap_edge_ids)
         lines.append(
@@ -252,9 +260,11 @@ def _safe_id(node_id: str) -> str:
     return "n" + node_id.replace("-", "_")
 
 
-def _display_label(node: LineageNode) -> str:
+def _display_label(node: LineageNode, needs_steward: bool = False) -> str:
     """Human-readable node label: name (strips adf:// prefix), plus system."""
     name = node.name
+    if needs_steward:
+        name = f"{name}\n⚠ stewardship required"
     # Only mark as unresolved when the system is still unknown — i.e. no
     # dataset JSON was provided for this adf:// placeholder.
     if node.full_path.startswith(_ADF_NS) and node.system == SystemType.UNKNOWN:
@@ -262,13 +272,19 @@ def _display_label(node: LineageNode) -> str:
     return f"{name}\n[{node.system.value}]"
 
 
-def _edge_label(edge: LineageEdge, is_gap: bool) -> str:
+def _edge_label(edge: LineageEdge, is_gap: bool, is_contested: bool = False) -> str:
     """Short edge label: transformation (truncated) + confidence %."""
     parts = []
     if edge.transformation:
         t = edge.transformation
         parts.append(t[:40] + "…" if len(t) > 40 else t)
+    if edge.orchestrated_by:
+        # "adf:pl_x/nb_silver_pos_sales" → "⚙ ADF nb_silver_pos_sales"
+        engine, _, rest = edge.orchestrated_by.partition(":")
+        parts.append(f"⚙ {engine.upper()} {rest.rsplit('/', 1)[-1]}")
     parts.append(f"{edge.confidence:.0%}")
+    if is_contested:
+        parts.append("⚡ conflict")
     if is_gap:
         parts.append("⚠ gap")
     return " | ".join(parts)

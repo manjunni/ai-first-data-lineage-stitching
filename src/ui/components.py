@@ -45,6 +45,8 @@ _GAP_TYPE_ICON = {
     "unresolved_dataset_ref": "📎",
     "low_confidence_edge":    "⚠️",
     "contradictory_paths":    "⚡",
+    "conflicting_producers":  "⚔️",
+    "stewardship_required":   "🧑‍⚖️",
     "isolated_subgraph":      "🏝️",
 }
 

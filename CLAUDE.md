@@ -41,13 +41,17 @@ src/
 ├── parsers/
 │   ├── base_parser.py      — BaseParser abstract interface
 │   ├── sql_parser.py       — sqlglot AST → LineageFragment + LLM fallback
-│   ├── notebook_parser.py  — nbformat + regex (spark.read/write) + LLM fallback
+│   ├── notebook_parser.py  — .py: AST dataflow (pyspark_ast) → regex → LLM; .ipynb: nbformat + regex → LLM
+│   ├── pyspark_ast.py      — Abstract evaluator: f-strings/widgets → {placeholder} templates, helper-fn inlining, multi-parent joins
 │   ├── dlt_parser.py       — Python ast (@dlt.table) + sqlglot (LIVE TABLE) + LLM fallback
-│   └── adf_parser.py       — ADF pipeline/dataset JSON traversal + LLM fallback
+│   ├── uc_catalog_parser.py — Unity Catalog export → table inventory nodes (no edges) for template resolution
+│   └── adf_parser.py       — ADF pipeline/dataset JSON traversal + LLM fallback; ADF = orchestrator (edge.orchestrated_by)
 ├── graph/
 │   ├── models.py           — Pydantic models: LineageNode, LineageEdge, LineageFragment, LineageGraph, Gap
-│   ├── stitcher.py         — Two-pass merge: node dedup by full_path, edge dedup by (src,tgt), boundary annotation
-│   └── gap_detector.py     — 7 gap types: missing_source/target, unknown_system, unresolved_dataset_ref, low_confidence_edge, contradictory_paths, isolated_subgraph
+│   ├── paths.py            — ADLS location keys (abfss URL ≡ ADF fileSystem/folderPath), partition stripping
+│   ├── stitcher.py         — Merge by full_path + ADLS location, template expansion, ADF orchestration tagging, boundary annotation
+│   ├── stewardship.py      — External producer nodes (ext://), declared-producer parsing, stewardship_required(graph)
+│   └── gap_detector.py     — 9 gap types: missing_source/target, unknown_system, unresolved_dataset_ref, low_confidence_edge, contradictory_paths, conflicting_producers, stewardship_required, isolated_subgraph
 ├── sme/
 │   ├── question_generator.py  — Template per gap type + parallel LLM enrichment
 │   ├── email_handler.py       — ACS grouped send, [REF:gap-id] reply parsing
@@ -67,7 +71,7 @@ src/
     └── components.py       — Mermaid renderer, status badges, workflow timeline, legend
 config/
 └── settings.py             — Pydantic Settings (all env vars)
-tests/                      — 343 tests, all passing
+tests/                      — 447 tests, all passing
 ```
 
 ---
@@ -137,6 +141,10 @@ The agent pauses at `await_sme_responses` (LangGraph `interrupt`). The FastAPI `
 - **sqlglot over regex for SQL** — handles dialect variants (Spark SQL, T-SQL) and multi-statement files reliably.
 - **Python `ast` over regex for DLT** — correctly handles multi-line function bodies and complex decorator arguments.
 - **`adf://` namespace** — ADF pipeline parsers use `adf://DatasetName` as node identifiers; dataset JSON parsers emit the same identifier, so the stitcher connects them automatically via `full_path` deduplication even though files are uploaded separately.
+- **ADF is an orchestrator, not a data system** — no node is typed `adf`. Dataset refs take the store type (ADLS/SQL/…) from the dataset JSON or Copy source/sink settings; Copy edges and the edges of notebooks run by `DatabricksNotebook` activities carry `orchestrated_by="adf:<pipeline>/<activity>"` (matched via the `# Notebook path:` header or filename). Lookup activities are control metadata, not lineage.
+- **Templated names** — dynamic names become `{placeholder}` templates (`pos_{country:lower}_transactions`); the stitcher expands them against concrete nodes (typically from UC exports), carrying bindings across the edge (`raw/pos/NL → bronze.pos_nl_transactions`). Expanded edges are tagged `pattern match` and score as medium (0.70).
+- **Conflicting producers** — edges record `produced_by` (artifact names). When 2+ notebook/DLT/SQL artifacts write the same target, the stitcher stores a `ProducerConflict` on the graph with per-claim evidence (ADF orchestration, UC `last_write.notebook_path`, inputs only one version reads). `detect_gaps` raises `conflicting_producers`; edges into the target take a −0.20 penalty and show `⚡ conflict`. The SME reply is matched deterministically (filename / notebook path / unique token like `v2`, negation-aware, `both` keeps all); edges only the stale version claims are removed. The agent never picks a winner itself.
+- **External producers & stewardship** — `SystemType.EXTERNAL` marks producers outside the platform. Declared via ADF dataset annotation `declared_producer:<who>`, UC `table_properties.declared_producer`, a UC comment that explicitly says "external", or a UC comment naming a producer ("Maintained by Group Tax") on a table whose `last_write` has no job_id/notebook_path (written outside Databricks). A "Maintained by X" table last written by a Databricks job is *not* declared — its producer is a platform artifact not yet uploaded (e.g. store_id_xref, G5). Declared edges score 0.80 base (medium). Copy sources with non-Azure store settings (SFTP/FTP/HTTP) are EXTERNAL. ADLS nodes with no incoming lineage raise `stewardship_required`, with a suggested steward from "…by <Team>" in the node's or downstream table's description, else the owner annotation; catalog payloads carry `stewardship_status` (`required` / `declared_external` / `attested`). An SME attestation adds a CONFIRMED external → landing edge; "don't know" leaves it open.
 - **LLM as fallback, not primary** — every parser tries a deterministic path first; LLM activates only when that fails or yields no edges.
 
 ### Stitcher

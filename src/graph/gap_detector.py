@@ -4,6 +4,7 @@ import networkx as nx
 
 from src.graph.models import LineageGraph, LineageNode, LineageEdge, Gap, SystemType
 from src.graph.stitcher import to_networkx, _ADF_NS, _ROOT_SYSTEMS
+from src.graph.stewardship import stewardship_required
 
 # Confidence threshold below which an edge is flagged as needing SME review
 _LOW_CONFIDENCE = 0.70
@@ -37,8 +38,81 @@ def detect_gaps(graph: LineageGraph) -> list[Gap]:
     gaps.extend(_missing_targets(graph, G))
     gaps.extend(_low_confidence_edges(graph))
     gaps.extend(_contradictory_paths(graph))
+    gaps.extend(_conflicting_producers(graph))
+    gaps.extend(_stewardship_required(graph))
     gaps.extend(_isolated_subgraphs(graph, G))
 
+    return gaps
+
+
+def _stewardship_required(graph: LineageGraph) -> list[Gap]:
+    """
+    Landing data with no producing code and no declared producer (e.g. a
+    manual SFTP drop). Lineage can't be inferred — a steward has to attest
+    where it comes from.
+    """
+    gaps = []
+    for nid, info in stewardship_required(graph).items():
+        node = graph.nodes[nid]
+        steward = info["suggested_steward"]
+        steward_note = (
+            f" Suggested steward: {steward} (from {info['steward_evidence']})." if steward else ""
+        )
+        gaps.append(Gap(
+            gap_type="stewardship_required",
+            node_id=nid,
+            description=(
+                f"'{node.name}' ({node.description or node.full_path}) has no producing "
+                f"artifact and no declared producer.{steward_note} Who delivers this data "
+                f"and how (system, team, manual upload)?"
+            ),
+        ))
+    return gaps
+
+
+def _conflicting_producers(graph: LineageGraph) -> list[Gap]:
+    """
+    A target written by more than one artifact (stale vs live version). The
+    description lays out each claim's evidence; resolution is left to an SME.
+    """
+    gaps = []
+    for c in graph.open_conflicts():
+        target = graph.nodes.get(c.target_id)
+        tname = target.full_path if target else c.target_id
+        all_sources = {s for cl in c.claims for s in cl.source_ids}
+        lines = []
+        for cl in c.claims:
+            ev = []
+            ev.append(f"run by {cl.orchestrated_by}" if cl.orchestrated_by else "no orchestrator found")
+            if c.catalog_last_write:
+                ev.append("matches catalog last write" if cl.matches_catalog_last_write
+                          else "not the catalog last writer")
+            only = [graph.nodes[s].name for s in cl.source_ids
+                    if s in graph.nodes and not all(s in o.source_ids for o in c.claims)]
+            if only:
+                ev.append(f"only this version reads {', '.join(only)}")
+            lines.append(f"{cl.artifact} ({cl.notebook_path or 'path unknown'}): {'; '.join(ev)}")
+        lw = c.catalog_last_write or {}
+        lw_note = (
+            f" Catalog last write: {lw.get('notebook_path')} (job {lw.get('job_id')}, {lw.get('timestamp')})."
+            if lw else ""
+        )
+        evidence_disagrees = (
+            any(cl.orchestrated_by for cl in c.claims)
+            and any(cl.matches_catalog_last_write for cl in c.claims)
+            and not any(cl.orchestrated_by and cl.matches_catalog_last_write for cl in c.claims)
+        )
+        verdict = " Evidence disagrees on which is live." if evidence_disagrees else ""
+        gaps.append(Gap(
+            gap_type="conflicting_producers",
+            node_id=c.target_id,
+            description=(
+                f"{len(c.claims)} artifacts write '{tname}' "
+                f"({len(all_sources)} distinct inputs between them).{verdict}{lw_note} "
+                + " | ".join(lines)
+                + ". Which one is live in production?"
+            ),
+        ))
     return gaps
 
 

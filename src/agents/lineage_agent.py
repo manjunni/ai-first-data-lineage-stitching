@@ -8,6 +8,7 @@ from src.parsers.sql_parser import SqlParser
 from src.parsers.notebook_parser import NotebookParser
 from src.parsers.dlt_parser import DltParser
 from src.parsers.adf_parser import AdfParser
+from src.parsers.uc_catalog_parser import UcCatalogParser
 from src.graph.stitcher import stitch_fragments
 from src.graph.gap_detector import detect_gaps
 from src.sme.question_generator import generate_questions
@@ -18,7 +19,7 @@ from src.visualization.diagram_generator import generate_mermaid, generate_graph
 from src.catalog.publisher import get_publisher
 from config.settings import settings
 
-_PARSERS = [SqlParser(), NotebookParser(), DltParser(), AdfParser()]
+_PARSERS = [SqlParser(), NotebookParser(), DltParser(), UcCatalogParser(), AdfParser()]
 
 
 # ---------------------------------------------------------------------------

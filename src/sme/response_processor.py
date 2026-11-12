@@ -12,6 +12,7 @@ from src.graph.models import (
     Gap, LineageGraph, LineageNode, LineageEdge,
     SystemType, ConfidenceLevel,
 )
+from src.graph.stewardship import external_path, make_external_node, producer_from_text
 from config.settings import settings
 
 _ADF_NS = "adf://"
@@ -32,6 +33,7 @@ _SYSTEM_ALIASES = {
     "azure sql database": SystemType.SQL, "synapse": SystemType.SQL,
     "bi": SystemType.BI, "power bi": SystemType.BI, "powerbi": SystemType.BI,
     "ssrs": SystemType.BI, "tableau": SystemType.BI,
+    "external": SystemType.EXTERNAL, "external system": SystemType.EXTERNAL,
 }
 
 _EXTRACT_SYSTEM_PROMPT = """\
@@ -97,6 +99,23 @@ def apply_responses_to_graph(
         gap = gap_index[gap_id]
         raw_answer = response.get("raw_answer", "")
         sme_email = response.get("sme_email", "")
+
+        if gap.gap_type == "stewardship_required":
+            producer = _producer_from_answer(raw_answer)
+            if producer and llm is not None and not producer_from_text(raw_answer):
+                # No explicit "… by <who>" phrase — let the extractor name the producer.
+                producer = llm_structured_value(llm, gap, response, raw_answer) or producer
+            if producer:
+                _attest_external_producer(gap, producer, graph, sme_email, raw_answer)
+            gap.resolved = bool(producer)
+            continue
+
+        if gap.gap_type == "conflicting_producers":
+            # Matched deterministically against the known claims — no LLM needed.
+            # Stays open (and is asked again) if the reply names no single producer.
+            _handle_conflicting_producers(gap, {}, graph, sme_email, raw_answer)
+            gap.resolved = not any(c.target_id == gap.node_id for c in graph.open_conflicts())
+            continue
 
         if llm is not None:
             question = _find_question_for_gap(gap_id, response)
@@ -314,7 +333,176 @@ def _handle_contradictory_paths(
     })
 
 
+_DONT_KNOW = re.compile(
+    r"\b(don'?t know|do not know|no idea|not sure|unknown|unclear|n/?a|ask (?:someone|the)\b)",
+    re.IGNORECASE,
+)
+
+
+def llm_structured_value(llm, gap: Gap, response: dict, raw_answer: str) -> Optional[str]:
+    """Producer name via the LLM extractor, if it returns a usable value."""
+    try:
+        s = _extract_structured_answer(llm, _find_question_for_gap(gap.id, response), raw_answer, gap)
+    except Exception:
+        return None
+    if s.get("answer_type") == "no_information":
+        return None
+    val = (s.get("primary_value") or "").strip()
+    return val or None
+
+
+def _producer_from_answer(answer: str) -> Optional[str]:
+    """
+    Deterministic producer extraction from an attestation reply:
+    "Uploaded manually via SFTP by Category Buying" → "Category Buying (manual SFTP upload)".
+    Falls back to the first sentence. Returns None for "don't know" replies.
+    """
+    text = " ".join((answer or "").split())
+    if not text or _DONT_KNOW.search(text):
+        return None
+    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0].rstrip(".")
+    who = producer_from_text(first)
+    if not who:
+        m = _BY_TEAM.search(first)
+        who = m.group(1).strip() if m else None
+    if who and who.lower() != first.lower():
+        how = re.sub(r"\s*\bby\s+(?:the\s+)?" + re.escape(who) + r".*$", "", first,
+                     flags=re.IGNORECASE).strip(" ,")
+        how = how[:1].lower() + how[1:]
+        return f"{who} ({how})" if how else who
+    return first[:80]
+
+
+# "… every Monday by Category Buying" — a capitalised team/system name after "by".
+_BY_TEAM = re.compile(
+    r"\bby\s+(?:the\s+)?([A-Z][\w&/\-]*(?:\s+[A-Z][\w&/\-]*)*"
+    r"(?:\s+(?:team|department|dept|group|squad|function))?(?:\s*\([^)]*\))?)"
+)
+
+
+def _attest_external_producer(
+    gap: Gap, producer: str, graph: LineageGraph, sme_email: str, raw_answer: str,
+) -> None:
+    """Record an SME-attested external producer → landing node edge (CONFIRMED)."""
+    target = graph.nodes.get(gap.node_id or "")
+    if target is None:
+        return
+    path = external_path(producer)
+    ext = next((n for n in graph.nodes.values() if n.full_path == path), None)
+    if ext is None:
+        ext = make_external_node(producer, description=f"attested by {sme_email or 'SME'}")
+        graph.nodes[ext.id] = ext
+    graph.edges.append(LineageEdge(
+        source_id=ext.id,
+        target_id=target.id,
+        transformation="attested external producer",
+        system_boundary=f"{SystemType.EXTERNAL.value}→{target.system.value}",
+        confidence=0.95,
+        confidence_level=ConfidenceLevel.CONFIRMED,
+        evidence="sme_approved attestation",
+        sme_approved_by=sme_email or "sme",
+        audit_trail=[{"action": "stewardship_attested", "by": sme_email, "note": raw_answer[:200]}],
+    ))
+
+
+def _match_claim(conflict, text: str):
+    """
+    Deterministically map an SME reply to one producer claim. Matches on the
+    artifact filename/stem, the notebook path or its last segment, and finally
+    on a distinguishing token like ``v2``. Returns the claim, "all", or None.
+    """
+    t = (text or "").lower()
+    if re.search(r"\bboth\b|\ball of them\b", t) and not re.search(r"\bnot both\b", t):
+        return "all"
+
+    def keys(c):
+        out = {c.artifact.lower(), re.sub(r"\.\w+$", "", c.artifact.lower())}
+        if c.notebook_path:
+            out |= {c.notebook_path.lower(), c.notebook_path.rstrip("/").split("/")[-1].lower()}
+        return {k for k in out if k}
+
+    # Tokens that identify exactly one claim (e.g. "v2" vs "v1").
+    tokens = {c.artifact: set(re.split(r"[^a-z0-9]+", " ".join(keys(c)))) for c in conflict.claims}
+    unique = {}
+    for c in conflict.claims:
+        others = set().union(*(v for k, v in tokens.items() if k != c.artifact))
+        unique[c.artifact] = {tok for tok in tokens[c.artifact] - others if tok}
+
+    def mentioned(clause: str) -> list:
+        full = [c for c in conflict.claims if any(k in clause for k in keys(c))]
+        if full:
+            return full
+        return [c for c in conflict.claims
+                if any(re.search(rf"\b{re.escape(tok)}\b", clause) for tok in unique[c.artifact])]
+
+    # Judge each clause separately: "v2 is live, v1 is deprecated" names both,
+    # but only one positively.
+    positive, negative = [], []
+    for clause in re.split(r"[.;,\n]|\bbut\b|\band\b|\bwhile\b|\bwhereas\b", t):
+        hits = mentioned(clause)
+        if not hits:
+            continue
+        (negative if _NEGATIVE.search(clause) else positive).extend(hits)
+
+    neg = {c.artifact for c in negative}
+    pos = list({c.artifact: c for c in positive if c.artifact not in neg}.values())
+    if len(pos) == 1:
+        return pos[0]
+    if not pos and neg:
+        remaining = [c for c in conflict.claims if c.artifact not in neg]
+        if len(remaining) == 1:
+            return remaining[0]
+    return None
+
+
+_NEGATIVE = re.compile(
+    r"\b(deprecated|obsolete|stale|old|legacy|retired|decommissioned|unused|dead|"
+    r"not (?:live|used|in use|running|active)|no longer|disabled|replaced|superseded)\b"
+)
+
+
+def _handle_conflicting_producers(
+    gap: Gap, s: dict, graph: LineageGraph, sme_email: str, raw_answer: str,
+) -> None:
+    """
+    SME named the live producer. Drop lineage that only the stale producer(s)
+    claim, keep edges the live one produces, and inherit its orchestrator.
+    """
+    conflict = next((c for c in graph.producer_conflicts if c.target_id == gap.node_id), None)
+    if conflict is None or conflict.resolved_artifact:
+        return
+    choice = _match_claim(conflict, f"{s.get('primary_value') or ''} {raw_answer}")
+    if choice is None:
+        return  # ambiguous reply — leave the conflict open
+
+    conflict.resolved_by = sme_email
+    if choice == "all":
+        conflict.resolved_artifact = "__all__"
+        return
+
+    conflict.resolved_artifact = choice.artifact
+    claimants = {c.artifact for c in conflict.claims}
+    kept = []
+    for e in graph.edges:
+        if e.target_id != conflict.target_id or not (set(e.produced_by) & claimants):
+            kept.append(e)
+            continue
+        if choice.artifact not in e.produced_by:
+            continue  # only the stale version claims this edge
+        e.produced_by = [p for p in e.produced_by if p == choice.artifact or p not in claimants]
+        e.orchestrated_by = choice.orchestrated_by
+        e.audit_trail.append({
+            "action": "producer_conflict_resolved",
+            "by": sme_email,
+            "live_producer": choice.artifact,
+            "note": raw_answer[:200],
+        })
+        kept.append(e)
+    graph.edges = kept
+
+
 _HANDLERS = {
+    "conflicting_producers":   _handle_conflicting_producers,
     "missing_source":          _handle_missing_source,
     "missing_target":          _handle_missing_target,
     "unknown_system":          _handle_unknown_system,

@@ -16,6 +16,8 @@ from src.parsers.sql_parser import (
     _infer_system,
     _normalise_llm_node,
 )
+from src.graph.paths import is_adls_url, adls_display_name, strip_partition_segments
+from src.parsers.pyspark_ast import evaluate_python, notebook_path_from_header
 from src.graph.models import (
     ColumnMapping, LineageFragment, LineageNode, LineageEdge,
     SystemType, ConfidenceLevel,
@@ -160,7 +162,9 @@ class NotebookParser(BaseParser):
                     return fragment
             except Exception:
                 pass
-            return _parse_with_llm_nb(content, filename)
+            llm_frag = _parse_with_llm_nb(content, filename)
+            llm_frag.raw_metadata["notebook_path"] = notebook_path_from_header(content)
+            return llm_frag
 
         try:
             fragment = _parse_with_nbformat(content, filename)
@@ -403,6 +407,8 @@ def _extract_spark_sql(line: str) -> list[str]:
 
 
 def _path_to_info(path: str) -> dict:
+    if is_adls_url(path):
+        return {"name": adls_display_name(path), "full_path": path, "system": SystemType.ADLS}
     parts = path.split(".")
     name = parts[-1]
     catalog = parts[0] if len(parts) >= 3 else None
@@ -473,9 +479,84 @@ def _join_logical_lines(source: str) -> list[str]:
 
 def _parse_python_file(content: str, filename: str) -> LineageFragment:
     """
-    Parse a .py Databricks script using the same regex/tracker logic as
-    _parse_with_nbformat but treating the entire file as one code block.
+    Parse a .py Databricks script. The AST dataflow evaluator runs first (it
+    resolves f-strings, widgets, helper functions and multi-parent joins); the
+    regex tracker is the fallback and also contributes column mappings.
     """
+    regex_frag = _parse_python_file_regex(content, filename)
+    try:
+        fragment = _parse_python_file_ast(content, filename)
+    except SyntaxError:
+        fragment = None
+    nb_path = notebook_path_from_header(content)
+
+    if fragment is None or not fragment.edges:
+        regex_frag.raw_metadata["notebook_path"] = nb_path
+        return regex_frag
+
+    # Carry column mappings found by the regex tracker onto matching AST edges.
+    regex_ids = {n.id: n.full_path for n in regex_frag.nodes}
+    regex_maps = {
+        (regex_ids.get(e.source_id), regex_ids.get(e.target_id)): e.column_mappings
+        for e in regex_frag.edges if e.column_mappings
+    }
+    ast_ids = {n.id: n.full_path for n in fragment.nodes}
+    for e in fragment.edges:
+        maps = regex_maps.get((ast_ids[e.source_id], ast_ids[e.target_id]))
+        if maps:
+            e.column_mappings = maps
+    fragment.raw_metadata["notebook_path"] = nb_path
+    return fragment
+
+
+def _parse_python_file_ast(content: str, filename: str) -> LineageFragment:
+    fragment = LineageFragment(artifact_name=filename, artifact_type="notebook")
+    node_registry: dict[str, LineageNode] = {}
+    result = evaluate_python(content)
+
+    for sql_text in result.sql_texts:
+        _absorb_sql(sql_text, filename, fragment, node_registry)
+
+    for w in result.writes:
+        tgt_path = _normalise_dynamic_path(w.target.text)
+        tgt_node = _get_or_create_node(_path_to_info(tgt_path), node_registry, fragment)
+        ops = [op for op in w.df.ops]
+        transform = _summarise_ops(ops) if ops else "spark transformation"
+        if w.df.opaque:
+            transform += f"; opaque: {', '.join(dict.fromkeys(w.df.opaque))}"
+        for src in w.df.sources:
+            src_path = _normalise_dynamic_path(src)
+            if src_path == tgt_path:
+                continue
+            src_node = _get_or_create_node(_path_to_info(src_path), node_registry, fragment)
+            dynamic = w.df.soft or w.target.soft or w.target.templated or "{" in src_path
+            evidence = f"parsed from {filename} via python ast"
+            if dynamic:
+                evidence += " (dynamic name: resolved from f-string/widget default)"
+            fragment.edges.append(LineageEdge(
+                source_id=src_node.id,
+                target_id=tgt_node.id,
+                transformation=transform,
+                confidence=0.70 if dynamic else 0.90,
+                confidence_level=ConfidenceLevel.MEDIUM if dynamic else ConfidenceLevel.HIGH,
+                evidence=evidence,
+            ))
+    return fragment
+
+
+def _normalise_dynamic_path(path: str) -> str:
+    """
+    For storage paths, drop trailing segments that are pure placeholders
+    (date partitions like ``/{year}/{month}/{day}``) so the node identifies the
+    dataset folder rather than a single run's partition.
+    """
+    if not path.startswith(("abfss://", "wasbs://", "abfs://", "adls://", "dbfs:/", "/mnt/")):
+        return path
+    return strip_partition_segments(path)
+
+
+def _parse_python_file_regex(content: str, filename: str) -> LineageFragment:
+    """Regex/tracker parse of a .py script, treating the file as one code block."""
     fragment = LineageFragment(artifact_name=filename, artifact_type="notebook")
     node_registry: dict[str, LineageNode] = {}
     tracker = DataFlowTracker()

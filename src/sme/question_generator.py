@@ -7,6 +7,8 @@ from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.graph.models import Gap, LineageGraph, LineageEdge
+from src.graph.paths import adls_display_name
+from src.graph.stewardship import stewardship_required
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -47,6 +49,18 @@ _TEMPLATES: dict[str, str] = {
         "These connected tables have no documented data origin: {node_names}. "
         "What system provides the raw data for this group? "
         "Please describe the original source (system type and path or table name)."
+    ),
+    "stewardship_required": (
+        "No pipeline or code in the uploaded artifacts produces '{node_name}' ({location}), "
+        "and no producer has been declared for it. {steward}"
+        "Who delivers this data, and how (source system, team, manual upload)? "
+        "Your answer will be recorded as the attested producer in the data catalog."
+    ),
+    "conflicting_producers": (
+        "'{node_name}' is written by more than one piece of code: {claims}. "
+        "{evidence}"
+        "Which one is live in production? Please reply with the notebook/file name "
+        "(or 'both' if they legitimately write different parts of the table)."
     ),
     "contradictory_paths": (
         "There are conflicting records about how data flows from "
@@ -165,6 +179,37 @@ def _fill_template(gap: Gap, graph: LineageGraph) -> tuple[str, str]:
         elif gap.gap_type == "isolated_subgraph":
             names = _extract_names_from_description(gap.description)
             return tpl.format(node_names=names), context
+
+        elif gap.gap_type == "stewardship_required":
+            node = graph.nodes.get(gap.node_id or "")
+            if node:
+                info = stewardship_required(graph).get(node.id, {})
+                steward = (
+                    f"Our records suggest {info['suggested_steward']} is responsible "
+                    f"(from {info['steward_evidence']}). "
+                ) if info.get("suggested_steward") else ""
+                return tpl.format(
+                    node_name=node.name,
+                    location=adls_display_name(node.full_path),
+                    steward=steward,
+                ), context
+
+        elif gap.gap_type == "conflicting_producers":
+            node = graph.nodes.get(gap.node_id or "")
+            conflict = next((c for c in graph.producer_conflicts if c.target_id == gap.node_id), None)
+            if node and conflict:
+                claims = ", ".join(
+                    f"{c.artifact} ({c.notebook_path})" if c.notebook_path else c.artifact
+                    for c in conflict.claims
+                )
+                ev = []
+                for c in conflict.claims:
+                    if c.orchestrated_by:
+                        ev.append(f"ADF schedules {c.artifact}")
+                    if c.matches_catalog_last_write:
+                        ev.append(f"Unity Catalog shows {c.artifact} wrote the table last")
+                evidence = (". ".join(ev) + ". ") if ev else ""
+                return tpl.format(node_name=node.full_path, claims=claims, evidence=evidence), context
 
         elif gap.gap_type == "contradictory_paths":
             edge = _find_edge(gap.edge_id, graph)

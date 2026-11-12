@@ -11,6 +11,7 @@ from src.graph.models import (
     LineageFragment, LineageNode, LineageEdge,
     SystemType, ConfidenceLevel,
 )
+from src.graph.stewardship import make_external_node, declared_edge
 from config.settings import settings
 
 # Namespace prefix for ADF dataset reference names.
@@ -94,7 +95,7 @@ class AdfParser(BaseParser):
 
         try:
             if file_type == "pipeline":
-                _parse_pipeline(props, filename, fragment)
+                _parse_pipeline(props, filename, fragment, data.get("name") or filename)
             elif file_type == "dataset":
                 _parse_dataset(data.get("name", ""), props, fragment)
             # linked services: no lineage to extract
@@ -133,12 +134,20 @@ def _detect_file_type(props: dict) -> str:
 # Pipeline parsing
 # ---------------------------------------------------------------------------
 
-def _parse_pipeline(props: dict, filename: str, fragment: LineageFragment) -> None:
+def _parse_pipeline(
+    props: dict, filename: str, fragment: LineageFragment, pipeline_name: str = "",
+) -> None:
     node_registry: dict[str, LineageNode] = {}
     activities = props.get("activities", [])
+    fragment.raw_metadata["pipeline"] = pipeline_name
+    fragment.raw_metadata["orchestrations"] = []
+    fragment.raw_metadata["pipeline_parameters"] = {
+        k: (v or {}).get("defaultValue")
+        for k, v in (props.get("parameters") or {}).items()
+    }
 
     for act in _flatten_activities(activities):
-        _process_activity(act, filename, fragment, node_registry)
+        _process_activity(act, filename, fragment, node_registry, pipeline_name)
 
 
 def _flatten_activities(activities: list[dict]) -> list[dict]:
@@ -169,18 +178,77 @@ def _process_activity(
     filename: str,
     fragment: LineageFragment,
     node_registry: dict[str, LineageNode],
+    pipeline_name: str = "",
 ) -> None:
     act_type = act.get("type", "")
     act_name = act.get("name", act_type)
+    orchestrator = _orchestrator_tag(pipeline_name, act_name)
 
     if act_type == "Copy":
-        _process_copy(act, act_name, filename, fragment, node_registry)
+        _process_copy(act, act_name, filename, fragment, node_registry, orchestrator)
     elif act_type == "ExecuteDataFlow":
-        _process_dataflow(act, act_name, filename, fragment, node_registry)
+        _process_dataflow(act, act_name, filename, fragment, node_registry, orchestrator)
     elif act_type in ("DatabricksNotebook", "DatabricksSparkJar", "DatabricksSparkPython"):
-        _process_databricks_activity(act, act_type, act_name, filename, fragment, node_registry)
+        _process_databricks_activity(act, act_type, act_name, filename, fragment, node_registry, orchestrator)
+        _record_orchestration(act, act_type, act_name, pipeline_name, fragment)
     elif act_type == "Lookup":
         _process_lookup(act, act_name, filename, fragment, node_registry)
+
+
+def _orchestrator_tag(pipeline_name: str, act_name: str) -> str:
+    return f"adf:{pipeline_name}/{act_name}" if pipeline_name else f"adf:{act_name}"
+
+
+def _record_orchestration(
+    act: dict, act_type: str, act_name: str, pipeline_name: str, fragment: LineageFragment,
+) -> None:
+    """
+    A Databricks activity moves no data by itself in ADF's view — the notebook
+    it runs does. Record which notebook ADF triggers so the stitcher can tag the
+    notebook's own edges as orchestrated by this pipeline/activity.
+    """
+    tp = act.get("typeProperties", {})
+    fragment.raw_metadata.setdefault("orchestrations", []).append({
+        "pipeline": pipeline_name,
+        "activity": act_name,
+        "activity_type": act_type,
+        "notebook_path": (tp.get("notebookPath") or tp.get("pythonFile") or "").rstrip("/") or None,
+        "parameters": tp.get("baseParameters") or {},
+        "depends_on": [d.get("activity") for d in act.get("dependsOn", []) if d.get("activity")],
+    })
+
+
+# Copy source/sink typeProperties → store system of the referenced dataset.
+_STORE_SETTINGS_SYSTEM: dict[str, SystemType] = {
+    "AzureBlobFSReadSettings":           SystemType.ADLS,
+    "AzureBlobFSWriteSettings":          SystemType.ADLS,
+    "AzureBlobStorageReadSettings":      SystemType.ADLS,
+    "AzureBlobStorageWriteSettings":     SystemType.ADLS,
+    "AzureDataLakeStoreReadSettings":    SystemType.ADLS,
+    "AzureDataLakeStoreWriteSettings":   SystemType.ADLS,
+}
+_SOURCE_TYPE_SYSTEM: dict[str, SystemType] = {
+    "AzureSqlSource": SystemType.SQL, "SqlServerSource": SystemType.SQL,
+    "SqlDWSource": SystemType.SQL, "AzureSqlSink": SystemType.SQL,
+    "SqlServerSink": SystemType.SQL, "SqlDWSink": SystemType.SQL,
+    "AzureDatabricksDeltaLakeSource": SystemType.DATABRICKS,
+    "AzureDatabricksDeltaLakeSink": SystemType.DATABRICKS,
+}
+
+
+def _side_hint(side: dict) -> tuple[SystemType, str | None]:
+    """Infer (system, description) for a Copy source/sink from its typeProperties."""
+    store = (side.get("storeSettings") or {}).get("type", "")
+    if store in _STORE_SETTINGS_SYSTEM:
+        return _STORE_SETTINGS_SYSTEM[store], None
+    if side.get("type") in _SOURCE_TYPE_SYSTEM:
+        return _SOURCE_TYPE_SYSTEM[side["type"]], None
+    if store:
+        # e.g. SftpReadSettings, FtpReadSettings, HttpReadSettings → a source
+        # system outside the platform; register it as an external boundary.
+        kind = store.replace("ReadSettings", "").replace("WriteSettings", "")
+        return SystemType.EXTERNAL, f"external {kind.upper()} source system (dataset definition not provided)"
+    return SystemType.UNKNOWN, None
 
 
 def _process_copy(
@@ -189,6 +257,7 @@ def _process_copy(
     filename: str,
     fragment: LineageFragment,
     node_registry: dict[str, LineageNode],
+    orchestrator: str | None = None,
 ) -> None:
     inputs  = act.get("inputs",  [])
     outputs = act.get("outputs", [])
@@ -209,10 +278,13 @@ def _process_copy(
         if path:
             tgt_refs = [path]
 
+    src_hint = _side_hint(tp.get("source", {}))
+    tgt_hint = _side_hint(tp.get("sink", {}))
+
     for src_ref in src_refs:
-        src_node = _make_ref_node(src_ref, node_registry, fragment)
+        src_node = _make_ref_node(src_ref, node_registry, fragment, *src_hint)
         for tgt_ref in tgt_refs:
-            tgt_node = _make_ref_node(tgt_ref, node_registry, fragment)
+            tgt_node = _make_ref_node(tgt_ref, node_registry, fragment, *tgt_hint)
             fragment.edges.append(LineageEdge(
                 source_id=src_node.id,
                 target_id=tgt_node.id,
@@ -220,6 +292,7 @@ def _process_copy(
                 confidence=0.85,
                 confidence_level=ConfidenceLevel.HIGH,
                 evidence=f"parsed from {filename} via ADF pipeline JSON",
+                orchestrated_by=orchestrator,
             ))
 
 
@@ -229,6 +302,7 @@ def _process_dataflow(
     filename: str,
     fragment: LineageFragment,
     node_registry: dict[str, LineageNode],
+    orchestrator: str | None = None,
 ) -> None:
     tp = act.get("typeProperties", {})
     df_name = tp.get("dataflow", {}).get("referenceName", act_name)
@@ -251,6 +325,7 @@ def _process_dataflow(
                 confidence=0.80,
                 confidence_level=ConfidenceLevel.HIGH,
                 evidence=f"parsed from {filename} via ADF pipeline JSON",
+                orchestrated_by=orchestrator,
             ))
 
 
@@ -261,6 +336,7 @@ def _process_databricks_activity(
     filename: str,
     fragment: LineageFragment,
     node_registry: dict[str, LineageNode],
+    orchestrator: str | None = None,
 ) -> None:
     tp = act.get("typeProperties", {})
     inputs  = act.get("inputs",  [])
@@ -286,6 +362,7 @@ def _process_databricks_activity(
                 confidence=0.75,
                 confidence_level=ConfidenceLevel.HIGH,
                 evidence=f"parsed from {filename} via ADF pipeline JSON",
+                orchestrated_by=orchestrator,
             ))
 
 
@@ -296,11 +373,18 @@ def _process_lookup(
     fragment: LineageFragment,
     node_registry: dict[str, LineageNode],
 ) -> None:
-    # Lookup only reads — add source node with no outgoing edge from parser
+    # A Lookup reads control metadata to drive the pipeline (e.g. a ForEach feed
+    # list). It is not a data flow, so no node is added to the lineage graph —
+    # it is recorded as pipeline control metadata instead.
     tp = act.get("typeProperties", {})
     ds_ref = tp.get("dataset", {}).get("referenceName")
     if ds_ref:
-        _make_ref_node(_ADF_NS + ds_ref, node_registry, fragment)
+        src = tp.get("source", {})
+        fragment.raw_metadata.setdefault("control_lookups", []).append({
+            "activity": act_name,
+            "dataset": ds_ref,
+            "query": src.get("sqlReaderQuery") or src.get("query"),
+        })
 
 
 # ---------------------------------------------------------------------------
@@ -322,13 +406,97 @@ def _parse_dataset(name: str, props: dict, fragment: LineageFragment) -> None:
     tp = props.get("typeProperties", {})
     storage_path = _extract_dataset_path(ds_type, tp)
 
+    annotations = _annotation_map(props.get("annotations") or [])
     node = LineageNode(
         name=name,
         system=system,
         full_path=_ADF_NS + name,
         description=storage_path or None,
+        owner=annotations.get("owner"),
     )
     fragment.nodes.append(node)
+
+    # "declared_producer:SAP CDC extraction (Group Integration team)" — the
+    # data is produced outside the platform; register that boundary explicitly.
+    producer = annotations.get("declared_producer")
+    if producer:
+        ext = make_external_node(producer, description=f"declared on ADF dataset {name}")
+        fragment.nodes.append(ext)
+        fragment.edges.append(declared_edge(ext, node, f"annotation on ADF dataset {name}"))
+
+    fragment.raw_metadata["dataset"] = {
+        "name": name,
+        "type": ds_type,
+        "location": storage_path or None,
+        "linked_service": (props.get("linkedServiceName") or {}).get("referenceName"),
+        "annotations": annotations,
+    }
+
+
+def _annotation_map(annotations: list) -> dict[str, str]:
+    """ADF annotations like ``"owner:trading-data-team"`` → {"owner": "trading-data-team"}."""
+    out: dict[str, str] = {}
+    for a in annotations:
+        if isinstance(a, str) and ":" in a:
+            k, _, v = a.partition(":")
+            out[k.strip()] = v.strip()
+    return out
+
+
+def _adf_value(val) -> str:
+    """A typeProperties value: literal string, or ``{"value": "@expr", "type": "Expression"}``."""
+    if isinstance(val, dict):
+        val = val.get("value", "")
+    if not isinstance(val, str):
+        return ""
+    return _adf_expr_to_template(val) if val.startswith("@") else val
+
+
+_ADF_PARAM_REF = re.compile(r"(?:dataset|pipeline)\(\)\.(?:parameters\.)?(\w+)|item\(\)\.(\w+)")
+
+
+def _adf_expr_to_template(expr: str) -> str:
+    """
+    Turn an ADF expression into a ``{placeholder}`` path template, e.g.
+    ``@concat('pos/', toUpper(dataset().country_code), '/', formatDateTime(dataset().run_date,'yyyy/MM/dd'))``
+    → ``pos/{country_code:upper}/{run_date}``.
+    """
+    body = expr.lstrip("@").strip()
+    if body.startswith("{") and body.endswith("}"):  # string interpolation "@{...}"
+        body = body[1:-1]
+    m = re.fullmatch(r"concat\((.*)\)", body, re.DOTALL)
+    args = _split_args(m.group(1)) if m else [body]
+    out = []
+    for a in args:
+        a = a.strip()
+        if len(a) >= 2 and a[0] == a[-1] == "'":
+            out.append(a[1:-1])
+            continue
+        ref = _ADF_PARAM_REF.search(a)
+        name = (ref.group(1) or ref.group(2)) if ref else "expr"
+        case = ":upper" if a.startswith("toUpper(") else ":lower" if a.startswith("toLower(") else ""
+        out.append("{%s%s}" % (name, case))
+    return "".join(out)
+
+
+def _split_args(s: str) -> list[str]:
+    """Split a comma-separated argument list at top level (respecting parens and quotes)."""
+    args, depth, buf, quoted = [], 0, "", False
+    for ch in s:
+        if ch == "'" :
+            quoted = not quoted
+        elif not quoted and ch == "(":
+            depth += 1
+        elif not quoted and ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0 and not quoted:
+            args.append(buf)
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        args.append(buf)
+    return args
 
 
 def _extract_dataset_path(ds_type: str, tp: dict) -> str:
@@ -339,17 +507,17 @@ def _extract_dataset_path(ds_type: str, tp: dict) -> str:
     # AzureBlobFS / ADLS Gen2 — new location block
     loc = tp.get("location", {})
     if loc:
-        fs     = loc.get("fileSystem", "")
+        fs     = _adf_value(loc.get("fileSystem", "") or loc.get("container", ""))
         # ADF uses either "folderPath" or "filePath" depending on the linked service type
-        folder = loc.get("folderPath", "") or loc.get("filePath", "")
-        fname  = loc.get("fileName", "")
-        parts = [p for p in [fs, folder, fname] if p]
+        folder = _adf_value(loc.get("folderPath", "") or loc.get("filePath", ""))
+        fname  = _adf_value(loc.get("fileName", ""))
+        parts = [p.strip("/") for p in [fs, folder, fname] if p]
         if parts:
             return "/".join(parts)
 
     # Old-style ADLS / Blob: folderPath + fileName at top level
-    folder = tp.get("folderPath", "")
-    fname  = tp.get("fileName", "")
+    folder = _adf_value(tp.get("folderPath", ""))
+    fname  = _adf_value(tp.get("fileName", ""))
     if folder or fname:
         return "/".join(p for p in [folder, fname] if p)
 
@@ -376,20 +544,30 @@ def _make_ref_node(
     full_path: str,
     node_registry: dict[str, LineageNode],
     fragment: LineageFragment,
+    system_hint: SystemType = SystemType.UNKNOWN,
+    description: str | None = None,
 ) -> LineageNode:
-    """Get or create a node for an adf:// dataset reference or inline path."""
+    """
+    Get or create a node for an adf:// dataset reference or inline path.
+
+    An ADF dataset reference is a pointer to data in some *store* (ADLS, SQL,
+    SFTP…), never data "in ADF". Its system comes from the activity's
+    source/sink settings when known, else UNKNOWN until the dataset JSON (or an
+    SME) resolves it.
+    """
     if full_path in node_registry:
         return node_registry[full_path]
 
     name = full_path.replace(_ADF_NS, "").split("/")[-1].split(".")[-1]
     if full_path.startswith(("abfss://", "wasbs://")):
         system = SystemType.ADLS
-    elif full_path.startswith(_ADF_NS):
-        system = SystemType.ADF
     else:
-        system = SystemType.UNKNOWN
+        system = system_hint
     info = {"name": name, "full_path": full_path, "system": system}
-    return _get_or_create_node(info, node_registry, fragment)
+    node = _get_or_create_node(info, node_registry, fragment)
+    if description and not node.description:
+        node.description = description
+    return node
 
 
 def _inline_path(side: dict) -> str | None:

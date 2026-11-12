@@ -10,6 +10,9 @@ from src.graph.models import LineageGraph, LineageEdge, ConfidenceLevel, SystemT
 _BASE_BY_EVIDENCE: list[tuple[str, float]] = [
     # Most specific matches first
     ("sme_approved",    0.95),   # SME has explicitly confirmed
+    ("pattern match",   0.70),   # Templated name matched to concrete tables
+    ("dynamic name",    0.70),   # Name resolved from widget default / f-string
+    ("declared producer", 0.80), # Producer declared in metadata, not seen in code
     ("sqlglot",         0.90),   # Parsed deterministically from SQL AST
     ("ast",             0.90),   # Parsed deterministically from Python AST
     ("regex",           0.85),   # Regex extraction (notebooks, DLT)
@@ -23,6 +26,7 @@ _BASE_BY_EVIDENCE: list[tuple[str, float]] = [
 _PENALTY_CROSS_SYSTEM   = -0.05   # edge crosses a system boundary, not yet SME-confirmed
 _PENALTY_UNKNOWN_NODE   = -0.10   # source or target has UNKNOWN system type
 _PENALTY_ADF_UNRESOLVED = -0.15   # source or target still has adf:// placeholder path
+_PENALTY_CONTESTED      = -0.20   # target written by >1 artifact, live producer unknown
 
 _ADF_NS = "adf://"
 
@@ -34,9 +38,12 @@ def score_graph(graph: LineageGraph) -> dict[str, float]:
     Returns a dict of edge_id → final score.
     """
     scores: dict[str, float] = {}
+    contested = graph.contested_edge_ids()
 
     for edge in graph.edges:
         score = _score_edge(edge, graph)
+        if edge.id in contested and not edge.sme_approved_by:
+            score = round(max(0.0, score + _PENALTY_CONTESTED), 2)
         edge.confidence = score
         edge.confidence_level = _to_level(score, edge.sme_approved_by)
         scores[edge.id] = score

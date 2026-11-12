@@ -12,6 +12,7 @@ from src.graph.models import (
     LineageEdge,
     SystemType,
 )
+from src.graph.stewardship import stewardship_required
 from config.settings import settings
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ _ALATION_OBJECT_TYPE: dict[SystemType, str] = {
     SystemType.DLT:         "TABLE",
     SystemType.ADF:         "DATAFLOW",
     SystemType.BI:          "REPORT",
+    SystemType.EXTERNAL:    "DATAFLOW",
     SystemType.UNKNOWN:     "DATAFLOW",
 }
 
@@ -60,6 +62,7 @@ _COLLIBRA_ASSET_TYPE_NAME: dict[SystemType, str] = {
     SystemType.DLT:         "Table",
     SystemType.ADF:         "System",
     SystemType.BI:          "Report",
+    SystemType.EXTERNAL:    "System",
     SystemType.UNKNOWN:     "Data Asset",
 }
 
@@ -310,6 +313,7 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
     source (input) and target (output) objects.
     """
     lineage_items = []
+    stewardship = _stewardship_by_node(graph)
 
     for edge in graph.edges:
         if edge.review_status == "rejected":
@@ -330,8 +334,8 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
                 ),
                 "url": settings.alation_lineage_parent_path,
             },
-            "source_objects": [_node_to_alation_obj(src)],
-            "target_objects": [_node_to_alation_obj(tgt)],
+            "source_objects": [_node_to_alation_obj(src, stewardship)],
+            "target_objects": [_node_to_alation_obj(tgt, stewardship)],
             "column_mappings": [
                 _column_mapping_payload(mapping, edge.sme_approved_by)
                 for mapping in edge.column_mappings
@@ -350,7 +354,7 @@ def _graph_to_alation_payload(graph: LineageGraph, run_id: str) -> dict:
     }
 
 
-def _node_to_alation_obj(node: LineageNode) -> dict:
+def _node_to_alation_obj(node: LineageNode, stewardship: dict[str, dict] | None = None) -> dict:
     return {
         "external_id":          node.id,
         "object_type":          _ALATION_OBJECT_TYPE.get(node.system, "DATAFLOW"),
@@ -358,7 +362,32 @@ def _node_to_alation_obj(node: LineageNode) -> dict:
         "name":                 node.name,
         "description":          node.description or "",
         "url":                  node.full_path,
+        **(stewardship or {}).get(node.id, {}),
     }
+
+
+def _stewardship_by_node(graph: LineageGraph) -> dict[str, dict]:
+    """
+    Stewardship attributes per node for the catalog:
+    * ``required``          — landing data with no producer found or declared;
+                              published with the suggested steward (e.g. G8).
+    * ``declared_external`` — produced outside the platform per metadata.
+    * ``attested``          — external producer confirmed by an SME.
+    """
+    out: dict[str, dict] = {}
+    for nid, info in stewardship_required(graph).items():
+        out[nid] = {
+            "stewardship_status": "required",
+            "suggested_steward": info["suggested_steward"] or "",
+        }
+    for node in graph.nodes.values():
+        if node.system != SystemType.EXTERNAL:
+            continue
+        attested = any(
+            e.sme_approved_by for e in graph.edges if e.source_id == node.id
+        )
+        out[node.id] = {"stewardship_status": "attested" if attested else "declared_external"}
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +404,7 @@ def _graph_to_collibra_payload(graph: LineageGraph, run_id: str) -> dict:
     """
     assets = []
     seen_paths: set[str] = set()
+    stewardship = _stewardship_by_node(graph)
 
     for node in graph.nodes.values():
         if node.full_path in seen_paths:
@@ -392,6 +422,7 @@ def _graph_to_collibra_payload(graph: LineageGraph, run_id: str) -> dict:
             "system":         node.system.value,
             "description":    node.description or "",
             "domain_id":      settings.collibra_domain_id,
+            **stewardship.get(node.id, {}),
         })
 
     # Build a node_id → external_id lookup for relation creation
