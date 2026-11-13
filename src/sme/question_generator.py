@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import concurrent.futures
-from typing import Optional
+from typing import Callable, Optional
 
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.graph.models import Gap, LineageGraph, LineageEdge
 from src.graph.paths import adls_display_name
 from src.graph.stewardship import stewardship_required
 from config.settings import settings
+from src.llm_client import create_chat_model
+from src.llm_usage import make_usage_event
 
 # ---------------------------------------------------------------------------
 # Gap-type templates
@@ -83,6 +85,7 @@ def generate_questions(
     gaps: list[Gap],
     graph: LineageGraph,
     enrich_with_llm: bool = True,
+    usage_callback: Optional[Callable[[dict], None]] = None,
 ) -> list[dict]:
     """
     Build one question dict per open gap.
@@ -114,10 +117,25 @@ def generate_questions(
         })
 
     if not enrich_with_llm:
+        if usage_callback:
+            for draft in drafts:
+                usage_callback(make_usage_event(
+                    "question_generation", "deterministic", "success",
+                    gap_id=draft["gap_id"],
+                ))
         return drafts
 
     # Enrich all drafts in parallel
-    llm = _get_llm()
+    try:
+        llm = _get_llm()
+    except Exception as exc:
+        if usage_callback:
+            for draft in drafts:
+                usage_callback(make_usage_event(
+                    "question_generation", "deterministic", "fallback",
+                    gap_id=draft["gap_id"], error_type=type(exc).__name__,
+                ))
+        return drafts
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         futures = {
             pool.submit(_llm_enrich, llm, d["question"], d["context_summary"]): i
@@ -125,9 +143,19 @@ def generate_questions(
         }
         for future, idx in futures.items():
             try:
-                enriched = future.result(timeout=30)
+                enriched, response = future.result(timeout=30)
                 drafts[idx]["question"] = enriched
-            except Exception:
+                if usage_callback:
+                    usage_callback(make_usage_event(
+                        "question_generation", "llm", "success", response=response,
+                        llm_called=True, gap_id=drafts[idx]["gap_id"],
+                    ))
+            except Exception as exc:
+                if usage_callback:
+                    usage_callback(make_usage_event(
+                        "question_generation", "llm", "fallback", llm_called=True,
+                        gap_id=drafts[idx]["gap_id"], error_type=type(exc).__name__,
+                    ))
                 pass  # keep template question as fallback
 
     return drafts
@@ -243,22 +271,16 @@ def _resolve_sme_email(gap: Gap, graph: LineageGraph) -> Optional[str]:
 # LLM enrichment
 # ---------------------------------------------------------------------------
 
-def _llm_enrich(llm: AzureChatOpenAI, draft: str, context: str) -> str:
+def _llm_enrich(llm: ChatOpenAI, draft: str, context: str) -> tuple[str, object]:
     response = llm.invoke([
         SystemMessage(content=_LLM_SYSTEM_PROMPT),
         HumanMessage(content=f"Context:\n{context}\n\nDraft question:\n{draft}"),
     ])
-    return response.content.strip()
+    return response.content.strip(), response
 
 
-def _get_llm() -> AzureChatOpenAI:
-    return AzureChatOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        azure_deployment=settings.azure_openai_deployment,
-        api_version="2024-08-01-preview",
-        temperature=0.2,
-    )
+def _get_llm() -> ChatOpenAI:
+    return create_chat_model(temperature=0.2)
 
 
 # ---------------------------------------------------------------------------

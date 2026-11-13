@@ -570,11 +570,20 @@ class TestGetConfidence:
 
 def test_audit_trail_returned(client):
     c, (mock, run_id, state) = client
+    state["audit_trail"] = [{
+        "step": "usage",
+        "stage": "parse",
+        "execution_mode": "llm",
+        "input_tokens": 12,
+        "output_tokens": 4,
+    }]
     resp = c.get(f"/runs/{run_id}/audit")
     assert resp.status_code == 200
     data = resp.json()
     assert "audit_trail" in data
     assert isinstance(data["audit_trail"], list)
+    assert data["audit_trail"][0]["execution_mode"] == "llm"
+    assert data["audit_trail"][0]["input_tokens"] == 12
 
 
 # ===========================================================================

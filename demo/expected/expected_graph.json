@@ -1,0 +1,513 @@
+{
+  "after_parse_and_stitch": {
+    "node_count": 14,
+    "edge_count": 13,
+    "nodes": [
+      {
+        "name": "pos_export_customers",
+        "system": "adls",
+        "path": "adf://pos_export_customers"
+      },
+      {
+        "name": "pos_export_orders",
+        "system": "adls",
+        "path": "adf://pos_export_orders"
+      },
+      {
+        "name": "customers_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.customers_raw"
+      },
+      {
+        "name": "orders_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.orders_raw"
+      },
+      {
+        "name": "returns_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.returns_raw"
+      },
+      {
+        "name": "revenue_adjustments",
+        "system": "databricks",
+        "path": "harborline.finance.revenue_adjustments"
+      },
+      {
+        "name": "customers_clean",
+        "system": "databricks",
+        "path": "harborline.silver.customers_clean"
+      },
+      {
+        "name": "orders_adjusted",
+        "system": "databricks",
+        "path": "harborline.silver.orders_adjusted"
+      },
+      {
+        "name": "orders_clean",
+        "system": "databricks",
+        "path": "harborline.silver.orders_clean"
+      },
+      {
+        "name": "gold_net_revenue_by_segment",
+        "system": "dlt",
+        "path": "gold_net_revenue_by_segment"
+      },
+      {
+        "name": "silver_order_enriched",
+        "system": "dlt",
+        "path": "silver_order_enriched"
+      },
+      {
+        "name": "customers",
+        "system": "sql",
+        "path": "dbo.customers"
+      },
+      {
+        "name": "orders",
+        "system": "sql",
+        "path": "dbo.orders"
+      },
+      {
+        "name": "daily_sales_summary",
+        "system": "sql",
+        "path": "reporting.daily_sales_summary"
+      }
+    ],
+    "edges": [
+      {
+        "source": "customers",
+        "target": "daily_sales_summary",
+        "transformation": "filtered, aggregated, 1 join(s), 1 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "o.order_date -> order_date",
+          "c.segment -> customer_segment",
+          "o.gross_amount -> net_revenue",
+          "o.discount_amount -> net_revenue"
+        ]
+      },
+      {
+        "source": "customers_clean",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "customers_raw",
+        "target": "customers_clean",
+        "transformation": "filtered, 2 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "customer_id -> customer_id",
+          "full_name -> full_name",
+          "country_code -> country_code",
+          "segment -> customer_segment"
+        ]
+      },
+      {
+        "source": "orders",
+        "target": "daily_sales_summary",
+        "transformation": "filtered, aggregated, 1 join(s), 1 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "o.order_date -> order_date",
+          "c.segment -> customer_segment",
+          "o.gross_amount -> net_revenue",
+          "o.discount_amount -> net_revenue"
+        ]
+      },
+      {
+        "source": "orders",
+        "target": "orders_raw",
+        "transformation": "copy: Copy_Orders_ToLakehouse",
+        "boundary": "sql→databricks",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "orders_adjusted",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "orders_clean",
+        "target": "orders_adjusted",
+        "transformation": "left join with finance adjustments; adds adjustment_amount to net_amount",
+        "boundary": null,
+        "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+        "confidence": 0.6,
+        "column_mappings": [
+          "net_amount -> adjusted_net_amount"
+        ]
+      },
+      {
+        "source": "orders_raw",
+        "target": "orders_clean",
+        "transformation": "filtered, columns computed",
+        "boundary": null,
+        "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via regex",
+        "confidence": 0.85,
+        "column_mappings": [
+          "gross_amount -> net_amount",
+          "discount_amount -> net_amount",
+          "order_id -> order_id",
+          "customer_id -> customer_id",
+          "order_date -> order_date",
+          "gross_amount -> gross_amount",
+          "discount_amount -> discount_amount",
+          "net_amount -> net_amount"
+        ]
+      },
+      {
+        "source": "pos_export_customers",
+        "target": "customers",
+        "transformation": "copy: Copy_Customers_ToDW",
+        "boundary": "adls→sql",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "pos_export_orders",
+        "target": "orders",
+        "transformation": "copy: Copy_Orders_ToDW",
+        "boundary": "adls→sql",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "returns_raw",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "revenue_adjustments",
+        "target": "orders_adjusted",
+        "transformation": "left join on order_id; adjustment_amount applied to net_amount",
+        "boundary": null,
+        "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+        "confidence": 0.6,
+        "column_mappings": [
+          "adjustment_amount -> adjusted_net_amount"
+        ]
+      },
+      {
+        "source": "silver_order_enriched",
+        "target": "gold_net_revenue_by_segment",
+        "transformation": "aggregated",
+        "boundary": null,
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.9,
+        "column_mappings": []
+      }
+    ]
+  },
+  "after_sme_answers": {
+    "node_count": 18,
+    "edge_count": 18,
+    "nodes": [
+      {
+        "name": "gl_adjustments",
+        "system": "adls",
+        "path": "abfss://finance@harborlake.dfs.core.windows.net/gl_adjustments"
+      },
+      {
+        "name": "returns",
+        "system": "adls",
+        "path": "abfss://landing@harborlake.dfs.core.windows.net/returns"
+      },
+      {
+        "name": "pos_export_customers",
+        "system": "adls",
+        "path": "adf://pos_export_customers"
+      },
+      {
+        "name": "pos_export_orders",
+        "system": "adls",
+        "path": "adf://pos_export_orders"
+      },
+      {
+        "name": "Executive Net Revenue",
+        "system": "bi",
+        "path": "Executive Net Revenue"
+      },
+      {
+        "name": "Monthly Revenue Pack",
+        "system": "bi",
+        "path": "Monthly Revenue Pack"
+      },
+      {
+        "name": "customers_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.customers_raw"
+      },
+      {
+        "name": "orders_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.orders_raw"
+      },
+      {
+        "name": "returns_raw",
+        "system": "databricks",
+        "path": "harborline.bronze.returns_raw"
+      },
+      {
+        "name": "revenue_adjustments",
+        "system": "databricks",
+        "path": "harborline.finance.revenue_adjustments"
+      },
+      {
+        "name": "customers_clean",
+        "system": "databricks",
+        "path": "harborline.silver.customers_clean"
+      },
+      {
+        "name": "orders_adjusted",
+        "system": "databricks",
+        "path": "harborline.silver.orders_adjusted"
+      },
+      {
+        "name": "orders_clean",
+        "system": "databricks",
+        "path": "harborline.silver.orders_clean"
+      },
+      {
+        "name": "gold_net_revenue_by_segment",
+        "system": "dlt",
+        "path": "gold_net_revenue_by_segment"
+      },
+      {
+        "name": "silver_order_enriched",
+        "system": "dlt",
+        "path": "silver_order_enriched"
+      },
+      {
+        "name": "customers",
+        "system": "sql",
+        "path": "dbo.customers"
+      },
+      {
+        "name": "orders",
+        "system": "sql",
+        "path": "dbo.orders"
+      },
+      {
+        "name": "daily_sales_summary",
+        "system": "sql",
+        "path": "reporting.daily_sales_summary"
+      }
+    ],
+    "edges": [
+      {
+        "source": "customers",
+        "target": "customers_raw",
+        "transformation": "SME confirmed: bronze.customers_raw is loaded nightly by the legacy customer-sync job, which copies the Azure SQL table dbo.customers f",
+        "boundary": null,
+        "evidence": "SME-provided: marcus.oyelaran@harborline.example",
+        "confidence": 0.95,
+        "column_mappings": []
+      },
+      {
+        "source": "customers",
+        "target": "daily_sales_summary",
+        "transformation": "filtered, aggregated, 1 join(s), 1 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "o.order_date -> order_date",
+          "c.segment -> customer_segment",
+          "o.gross_amount -> net_revenue",
+          "o.discount_amount -> net_revenue"
+        ]
+      },
+      {
+        "source": "customers_clean",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "customers_raw",
+        "target": "customers_clean",
+        "transformation": "filtered, 2 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "customer_id -> customer_id",
+          "full_name -> full_name",
+          "country_code -> country_code",
+          "segment -> customer_segment"
+        ]
+      },
+      {
+        "source": "daily_sales_summary",
+        "target": "Monthly Revenue Pack",
+        "transformation": "SME confirmed: Yes. reporting.daily_sales_summary feeds the SSRS report 'Monthly Revenue Pack', which Finance still reconciles against.",
+        "boundary": null,
+        "evidence": "SME-provided: marcus.oyelaran@harborline.example",
+        "confidence": 0.95,
+        "column_mappings": []
+      },
+      {
+        "source": "gl_adjustments",
+        "target": "revenue_adjustments",
+        "transformation": "SME confirmed: Finance prepares a monthly credit-note and accrual workbook in Excel. A Power Automate flow lands it in ADLS at abfss://",
+        "boundary": null,
+        "evidence": "SME-provided: marcus.oyelaran@harborline.example",
+        "confidence": 0.95,
+        "column_mappings": []
+      },
+      {
+        "source": "gold_net_revenue_by_segment",
+        "target": "Executive Net Revenue",
+        "transformation": "SME confirmed: Yes. gold_net_revenue_by_segment feeds the Power BI dataset 'Executive Net Revenue' (workspace Finance-Exec), which driv",
+        "boundary": null,
+        "evidence": "SME-provided: marcus.oyelaran@harborline.example",
+        "confidence": 0.95,
+        "column_mappings": []
+      },
+      {
+        "source": "orders",
+        "target": "daily_sales_summary",
+        "transformation": "filtered, aggregated, 1 join(s), 1 computed column(s)",
+        "boundary": null,
+        "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+        "confidence": 0.9,
+        "column_mappings": [
+          "o.order_date -> order_date",
+          "c.segment -> customer_segment",
+          "o.gross_amount -> net_revenue",
+          "o.discount_amount -> net_revenue"
+        ]
+      },
+      {
+        "source": "orders",
+        "target": "orders_raw",
+        "transformation": "copy: Copy_Orders_ToLakehouse",
+        "boundary": "sql→databricks",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "orders_adjusted",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "orders_clean",
+        "target": "orders_adjusted",
+        "transformation": "left join with finance adjustments; adds adjustment_amount to net_amount",
+        "boundary": null,
+        "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+        "confidence": 0.95,
+        "column_mappings": [
+          "net_amount -> adjusted_net_amount"
+        ]
+      },
+      {
+        "source": "orders_raw",
+        "target": "orders_clean",
+        "transformation": "filtered, columns computed",
+        "boundary": null,
+        "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via regex",
+        "confidence": 0.85,
+        "column_mappings": [
+          "gross_amount -> net_amount",
+          "discount_amount -> net_amount",
+          "order_id -> order_id",
+          "customer_id -> customer_id",
+          "order_date -> order_date",
+          "gross_amount -> gross_amount",
+          "discount_amount -> discount_amount",
+          "net_amount -> net_amount"
+        ]
+      },
+      {
+        "source": "pos_export_customers",
+        "target": "customers",
+        "transformation": "copy: Copy_Customers_ToDW",
+        "boundary": "adls→sql",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "pos_export_orders",
+        "target": "orders",
+        "transformation": "copy: Copy_Orders_ToDW",
+        "boundary": "adls→sql",
+        "evidence": "parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON",
+        "confidence": 0.8,
+        "column_mappings": []
+      },
+      {
+        "source": "returns",
+        "target": "returns_raw",
+        "transformation": "SME confirmed: Returns arrive as a daily CSV drop from the returns portal vendor into ADLS at abfss://landing@harborlake.dfs.core.windo",
+        "boundary": null,
+        "evidence": "SME-provided: marcus.oyelaran@harborline.example",
+        "confidence": 0.95,
+        "column_mappings": []
+      },
+      {
+        "source": "returns_raw",
+        "target": "silver_order_enriched",
+        "transformation": "columns computed, joined",
+        "boundary": "databricks→dlt",
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.85,
+        "column_mappings": []
+      },
+      {
+        "source": "revenue_adjustments",
+        "target": "orders_adjusted",
+        "transformation": "left join on order_id; adjustment_amount applied to net_amount",
+        "boundary": null,
+        "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+        "confidence": 0.95,
+        "column_mappings": [
+          "adjustment_amount -> adjusted_net_amount"
+        ]
+      },
+      {
+        "source": "silver_order_enriched",
+        "target": "gold_net_revenue_by_segment",
+        "transformation": "aggregated",
+        "boundary": null,
+        "evidence": "parsed from 03_dlt_net_revenue_pipeline.py via ast",
+        "confidence": 0.9,
+        "column_mappings": []
+      }
+    ]
+  }
+}

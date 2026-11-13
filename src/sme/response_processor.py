@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from typing import Optional
+from typing import Callable, Optional
 
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.graph.models import (
@@ -13,7 +13,8 @@ from src.graph.models import (
     SystemType, ConfidenceLevel,
 )
 from src.graph.stewardship import external_path, make_external_node, producer_from_text
-from config.settings import settings
+from src.llm_client import create_chat_model
+from src.llm_usage import make_usage_event
 
 _ADF_NS = "adf://"
 
@@ -72,14 +73,13 @@ def apply_responses_to_graph(
     responses: list[dict],
     gaps: list[Gap],
     graph: LineageGraph,
+    usage_callback: Optional[Callable[[dict], None]] = None,
 ) -> tuple[list[Gap], LineageGraph]:
     """
     Interpret SME email responses and update the lineage graph accordingly.
 
-    For each response that matches a gap by gap_id:
-    1. Use LLM to extract a structured answer from the free-text reply.
-    2. Apply the answer to the graph (update nodes/edges).
-    3. Mark the gap as resolved.
+    Responses use deterministic handlers where possible and LLM extraction for
+    gap types that need free-text interpretation.
 
     Returns (updated_gaps, updated_graph).
     """
@@ -101,10 +101,16 @@ def apply_responses_to_graph(
         sme_email = response.get("sme_email", "")
 
         if gap.gap_type == "stewardship_required":
+            if usage_callback:
+                usage_callback(make_usage_event(
+                    "sme_response_processing", "deterministic", "success", gap_id=gap.id,
+                ))
             producer = _producer_from_answer(raw_answer)
             if producer and llm is not None and not producer_from_text(raw_answer):
                 # No explicit "… by <who>" phrase — let the extractor name the producer.
-                producer = llm_structured_value(llm, gap, response, raw_answer) or producer
+                producer = llm_structured_value(
+                    llm, gap, response, raw_answer, usage_callback=usage_callback,
+                ) or producer
             if producer:
                 _attest_external_producer(gap, producer, graph, sme_email, raw_answer)
             gap.resolved = bool(producer)
@@ -114,13 +120,24 @@ def apply_responses_to_graph(
             # Matched deterministically against the known claims — no LLM needed.
             # Stays open (and is asked again) if the reply names no single producer.
             _handle_conflicting_producers(gap, {}, graph, sme_email, raw_answer)
+            if usage_callback:
+                usage_callback(make_usage_event(
+                    "sme_response_processing", "deterministic", "success", gap_id=gap.id,
+                ))
             gap.resolved = not any(c.target_id == gap.node_id for c in graph.open_conflicts())
             continue
 
         if llm is not None:
             question = _find_question_for_gap(gap_id, response)
-            structured = _extract_structured_answer(llm, question, raw_answer, gap)
+            structured = _extract_structured_answer(
+                llm, question, raw_answer, gap, usage_callback=usage_callback,
+            )
             _apply_to_graph(gap, structured, graph, sme_email, raw_answer)
+        elif usage_callback:
+            usage_callback(make_usage_event(
+                "sme_response_processing", "deterministic", "fallback",
+                gap_id=gap.id, error_type="LLMUnavailable",
+            ))
 
         # Mark the gap resolved regardless of whether the LLM was available —
         # the SME has provided an answer and the loop should not ask again.
@@ -148,10 +165,11 @@ def apply_responses_to_graph(
 # ---------------------------------------------------------------------------
 
 def _extract_structured_answer(
-    llm: AzureChatOpenAI,
+    llm: ChatOpenAI,
     question: str,
     raw_answer: str,
     gap: Gap,
+    usage_callback: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     prompt = (
         f"Gap type: {gap.gap_type}\n"
@@ -159,16 +177,37 @@ def _extract_structured_answer(
         f"Question asked:\n{question or '(question text not available)'}\n\n"
         f"SME reply:\n{raw_answer}"
     )
+    response = None
     try:
         response = llm.invoke([
             SystemMessage(content=_EXTRACT_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
         ])
+    except Exception as exc:
+        if usage_callback:
+            usage_callback(make_usage_event(
+                "sme_response_processing", "llm", "failed", llm_called=True,
+                gap_id=gap.id, error_type=type(exc).__name__,
+            ))
+        return {
+            "answer_type": "no_information",
+            "primary_value": None,
+            "system_type": "unknown",
+            "confirmed": None,
+            "notes": raw_answer[:200],
+        }
+
+    try:
         content = response.content.strip()
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
-        return json.loads(content)
-    except Exception:
+        structured = json.loads(content)
+    except Exception as exc:
+        if usage_callback:
+            usage_callback(make_usage_event(
+                "sme_response_processing", "llm", "fallback", response=response,
+                llm_called=True, gap_id=gap.id, error_type=type(exc).__name__,
+            ))
         # Fall back to a minimal structure so graph update can still proceed
         return {
             "answer_type": "no_information",
@@ -177,6 +216,12 @@ def _extract_structured_answer(
             "confirmed": None,
             "notes": raw_answer[:200],
         }
+    if usage_callback:
+        usage_callback(make_usage_event(
+            "sme_response_processing", "llm", "success", response=response,
+            llm_called=True, gap_id=gap.id,
+        ))
+    return structured
 
 
 # ---------------------------------------------------------------------------
@@ -339,10 +384,19 @@ _DONT_KNOW = re.compile(
 )
 
 
-def llm_structured_value(llm, gap: Gap, response: dict, raw_answer: str) -> Optional[str]:
+def llm_structured_value(
+    llm,
+    gap: Gap,
+    response: dict,
+    raw_answer: str,
+    usage_callback: Optional[Callable[[dict], None]] = None,
+) -> Optional[str]:
     """Producer name via the LLM extractor, if it returns a usable value."""
     try:
-        s = _extract_structured_answer(llm, _find_question_for_gap(gap.id, response), raw_answer, gap)
+        s = _extract_structured_answer(
+            llm, _find_question_for_gap(gap.id, response), raw_answer, gap,
+            usage_callback=usage_callback,
+        )
     except Exception:
         return None
     if s.get("answer_type") == "no_information":
@@ -614,11 +668,5 @@ def _find_question_for_gap(gap_id: str, response: dict) -> Optional[str]:
     return response.get("question")
 
 
-def _get_llm() -> AzureChatOpenAI:
-    return AzureChatOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        azure_deployment=settings.azure_openai_deployment,
-        api_version="2024-08-01-preview",
-        temperature=0,
-    )
+def _get_llm() -> ChatOpenAI:
+    return create_chat_model(temperature=0)

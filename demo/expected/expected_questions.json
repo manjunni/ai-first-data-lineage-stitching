@@ -1,0 +1,51 @@
+[
+  {
+    "id": "A1",
+    "gap_type": "missing_source",
+    "persona": "Marcus Oyelaran, Data Engineering Lead",
+    "answer": "bronze.customers_raw is loaded nightly by the legacy customer-sync job, which copies the Azure SQL table dbo.customers from the sales DW into Databricks. The source is dbo.customers (Azure SQL).",
+    "question_template": "Where does the data in 'customers_raw' (databricks) come from? Please provide the source system (e.g. ADLS path, SQL table, Databricks table) that feeds into this table or file."
+  },
+  {
+    "id": "A2",
+    "gap_type": "missing_source",
+    "persona": "Marcus Oyelaran, Data Engineering Lead",
+    "answer": "Returns arrive as a daily CSV drop from the returns portal vendor into ADLS at abfss://landing@harborlake.dfs.core.windows.net/returns and Auto Loader ingests it into bronze.returns_raw. The source system is Azure Data Lake Storage.",
+    "question_template": "Where does the data in 'returns_raw' (databricks) come from? Please provide the source system (e.g. ADLS path, SQL table, Databricks table) that feeds into this table or file."
+  },
+  {
+    "id": "A3",
+    "gap_type": "missing_source",
+    "persona": "Elena Brandt, Finance Systems",
+    "answer": "Finance prepares a monthly credit-note and accrual workbook in Excel. A Power Automate flow lands it in ADLS at abfss://finance@harborlake.dfs.core.windows.net/gl_adjustments and a Databricks job loads it into finance.revenue_adjustments. The source system is Azure Data Lake Storage.",
+    "question_template": "Where does the data in 'revenue_adjustments' (databricks) come from? Please provide the source system (e.g. ADLS path, SQL table, Databricks table) that feeds into this table or file."
+  },
+  {
+    "id": "A4",
+    "gap_type": "low_confidence_edge",
+    "persona": "Marcus Oyelaran, Data Engineering Lead",
+    "answer": "Yes, confirmed. orders_clean feeds orders_adjusted in the finance adjustments notebook (the table names come from the job config).",
+    "question_template": "Can you confirm that data flows from 'orders_clean' → 'orders_adjusted'? The automated analysis found this link but was only 60% confident. Documented transformation: left join with finance adjustments; adds adjustment_amount to net_amount. Is this correct? If not, please describe the actual relationship."
+  },
+  {
+    "id": "A5",
+    "gap_type": "low_confidence_edge",
+    "persona": "Elena Brandt, Finance Systems",
+    "answer": "Yes, correct. The adjustments table is left-joined on order_id and adjustment_amount is added to net_amount.",
+    "question_template": "Can you confirm that data flows from 'revenue_adjustments' → 'orders_adjusted'? The automated analysis found this link but was only 60% confident. Documented transformation: left join on order_id; adjustment_amount applied to net_amount. Is this correct? If not, please describe the actual relationship."
+  },
+  {
+    "id": "A6",
+    "gap_type": "missing_target",
+    "persona": "Jordan Ellis, BI Lead",
+    "answer": "Yes. gold_net_revenue_by_segment feeds the Power BI dataset 'Executive Net Revenue' (workspace Finance-Exec), which drives the CFO dashboard. The target system is Power BI.",
+    "question_template": "Does 'gold_net_revenue_by_segment' (dlt) feed data into any downstream system? (e.g. Power BI report, SQL Server table, another Databricks table) If so, what is the target, and how is the data loaded there?"
+  },
+  {
+    "id": "A7",
+    "gap_type": "missing_target",
+    "persona": "Elena Brandt, Finance Systems",
+    "answer": "Yes. reporting.daily_sales_summary feeds the SSRS report 'Monthly Revenue Pack', which Finance still reconciles against. The target system is a BI reporting tool (SSRS).",
+    "question_template": "Does 'daily_sales_summary' (sql) feed data into any downstream system? (e.g. Power BI report, SQL Server table, another Databricks table) If so, what is the target, and how is the data loaded there?"
+  }
+]

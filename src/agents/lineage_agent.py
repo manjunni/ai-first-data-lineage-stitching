@@ -18,6 +18,7 @@ from src.scoring.confidence import score_graph
 from src.visualization.diagram_generator import generate_mermaid, generate_graphviz_dot
 from src.catalog.publisher import get_publisher
 from config.settings import settings
+from src.llm_usage import make_usage_event
 
 _PARSERS = [SqlParser(), NotebookParser(), DltParser(), UcCatalogParser(), AdfParser()]
 
@@ -43,6 +44,12 @@ def parse_artifacts(state: LineageState) -> dict:
             fragment = parser.parse(artifact)
             fragments.append(fragment)
             audit.append({"step": "parse", "artifact": artifact["filename"], "parser": type(parser).__name__, "ts": _now()})
+            usage_event = fragment.raw_metadata.get("usage_event") or make_usage_event(
+                "parse", "deterministic", "success", artifact=artifact["filename"],
+            )
+            usage_event.setdefault("artifact", artifact["filename"])
+            usage_event.setdefault("parser", type(parser).__name__)
+            audit.append(usage_event)
         else:
             audit.append({"step": "parse", "artifact": artifact["filename"], "parser": None, "warning": "no parser found", "ts": _now()})
 
@@ -62,7 +69,10 @@ def stitch_graph_node(state: LineageState) -> dict:
     return {
         "lineage_graph": graph,
         "status": "stitched",
-        "audit_trail": [{"step": "stitch", "nodes": len(graph.nodes), "edges": len(graph.edges), "ts": _now()}],
+        "audit_trail": [
+            {"step": "stitch", "nodes": len(graph.nodes), "edges": len(graph.edges), "ts": _now()},
+            make_usage_event("stitch", "deterministic", "success"),
+        ],
     }
 
 
@@ -98,11 +108,17 @@ def generate_sme_questions_node(state: LineageState) -> dict:
         g for g in state["gaps"]
         if not g.resolved and (g.gap_type, g.node_id, g.edge_id) not in asked_signatures
     ]
-    new_questions = generate_questions(open_gaps, state["lineage_graph"])
+    usage_events = []
+    new_questions = generate_questions(
+        open_gaps, state["lineage_graph"], usage_callback=usage_events.append,
+    )
     return {
         "sme_questions": existing + new_questions,
         "status": "questions_generated",
-        "audit_trail": [{"step": "question_gen", "questions": len(new_questions), "ts": _now()}],
+        "audit_trail": [
+            {"step": "question_gen", "questions": len(new_questions), "ts": _now()},
+            *usage_events,
+        ],
     }
 
 
@@ -146,10 +162,12 @@ def process_responses_node(state: LineageState) -> dict:
     Uses LLM to extract structured answers from free-text replies,
     then updates nodes/edges in the graph accordingly.
     """
+    usage_events = []
     updated_gaps, updated_graph = apply_responses_to_graph(
         responses=state["sme_responses"],
         gaps=state["gaps"],
         graph=state["lineage_graph"],
+        usage_callback=usage_events.append,
     )
     resolved_count = sum(1 for g in updated_gaps if g.resolved)
 
@@ -157,7 +175,10 @@ def process_responses_node(state: LineageState) -> dict:
         "gaps":          updated_gaps,
         "lineage_graph": updated_graph,
         "status":        "responses_processed",
-        "audit_trail":   [{"step": "process_responses", "resolved": resolved_count, "ts": _now()}],
+        "audit_trail":   [
+            {"step": "process_responses", "resolved": resolved_count, "ts": _now()},
+            *usage_events,
+        ],
     }
 
 

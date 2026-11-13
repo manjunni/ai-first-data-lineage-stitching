@@ -1,0 +1,733 @@
+{
+  "run_id": "9b02e81b-3542-4716-b2c0-7876ec211fd2",
+  "node_count": 18,
+  "edge_count": 18,
+  "lineage": [
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_d376355d",
+        "name": "customers_raw → customers_clean",
+        "description": "Confidence: 95%. Evidence: parsed from 01_nb_bronze_to_silver.ipynb via sqlglot. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "1b049441-8e43-41f5-a255-1cca23070e14",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.customers_raw",
+          "name": "customers_raw",
+          "description": "",
+          "url": "harborline.bronze.customers_raw"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "7ed1bb5b-efdb-4e7d-addf-92cb0092a95f",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.customers_clean",
+          "name": "customers_clean",
+          "description": "",
+          "url": "harborline.silver.customers_clean"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "customer_id",
+          "target_column": "customer_id",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "full_name",
+          "target_column": "full_name",
+          "transformation": "INITCAP(TRIM(full_name))",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "country_code",
+          "target_column": "country_code",
+          "transformation": "UPPER(country_code)",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "segment",
+          "target_column": "customer_segment",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 01_nb_bronze_to_silver.ipynb via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_503f7ca8",
+        "name": "orders_raw → orders_clean",
+        "description": "Confidence: 95%. Evidence: parsed from 01_nb_bronze_to_silver.ipynb via regex. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "f066e51e-0f04-4372-a014-065bf08db945",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.orders_raw",
+          "name": "orders_raw",
+          "description": "harborline.bronze.orders_raw",
+          "url": "harborline.bronze.orders_raw"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "f1315a8a-ab85-49cc-bd0f-d5645a72bdc8",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.orders_clean",
+          "name": "orders_clean",
+          "description": "",
+          "url": "harborline.silver.orders_clean"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "gross_amount",
+          "target_column": "net_amount",
+          "transformation": "F.col(\"gross_amount\") - F.col(\"discount_amount\")",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "discount_amount",
+          "target_column": "net_amount",
+          "transformation": "F.col(\"gross_amount\") - F.col(\"discount_amount\")",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "order_id",
+          "target_column": "order_id",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "customer_id",
+          "target_column": "customer_id",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "order_date",
+          "target_column": "order_date",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "gross_amount",
+          "target_column": "gross_amount",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "discount_amount",
+          "target_column": "discount_amount",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "net_amount",
+          "target_column": "net_amount",
+          "transformation": "",
+          "confidence": 0.85,
+          "confidence_level": "high",
+          "evidence": "parsed from PySpark DataFrame API",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_3466c4f6",
+        "name": "orders_clean → orders_adjusted",
+        "description": "Confidence: 95%. Evidence: LLM fallback from 02_nb_apply_finance_adjustments.ipynb. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "f1315a8a-ab85-49cc-bd0f-d5645a72bdc8",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.orders_clean",
+          "name": "orders_clean",
+          "description": "",
+          "url": "harborline.silver.orders_clean"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "a75aac71-fc5c-4bea-8a86-3707e11cb167",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.orders_adjusted",
+          "name": "orders_adjusted",
+          "description": "",
+          "url": "harborline.silver.orders_adjusted"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "net_amount",
+          "target_column": "adjusted_net_amount",
+          "transformation": "net_amount + coalesce(adjustment_amount, 0)",
+          "confidence": 0.6,
+          "confidence_level": "medium",
+          "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_8c5b6682",
+        "name": "revenue_adjustments → orders_adjusted",
+        "description": "Confidence: 95%. Evidence: LLM fallback from 02_nb_apply_finance_adjustments.ipynb. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "d3b2611a-6f4b-40c6-8c4e-648bc3103ad8",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.finance.revenue_adjustments",
+          "name": "revenue_adjustments",
+          "description": "",
+          "url": "harborline.finance.revenue_adjustments"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "a75aac71-fc5c-4bea-8a86-3707e11cb167",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.orders_adjusted",
+          "name": "orders_adjusted",
+          "description": "",
+          "url": "harborline.silver.orders_adjusted"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "adjustment_amount",
+          "target_column": "adjusted_net_amount",
+          "transformation": "net_amount + coalesce(adjustment_amount, 0)",
+          "confidence": 0.6,
+          "confidence_level": "medium",
+          "evidence": "LLM fallback from 02_nb_apply_finance_adjustments.ipynb",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_201bfea5",
+        "name": "orders_adjusted → silver_order_enriched",
+        "description": "Confidence: 95%. Evidence: parsed from 03_dlt_net_revenue_pipeline.py via ast. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "a75aac71-fc5c-4bea-8a86-3707e11cb167",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.orders_adjusted",
+          "name": "orders_adjusted",
+          "description": "",
+          "url": "harborline.silver.orders_adjusted"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "97fba0d3-6ad6-4bb9-9ddb-f49797416a88",
+          "object_type": "TABLE",
+          "fully_qualified_name": "silver_order_enriched",
+          "name": "silver_order_enriched",
+          "description": "",
+          "url": "silver_order_enriched"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_4a4d1b26",
+        "name": "customers_clean → silver_order_enriched",
+        "description": "Confidence: 95%. Evidence: parsed from 03_dlt_net_revenue_pipeline.py via ast. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "7ed1bb5b-efdb-4e7d-addf-92cb0092a95f",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.silver.customers_clean",
+          "name": "customers_clean",
+          "description": "",
+          "url": "harborline.silver.customers_clean"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "97fba0d3-6ad6-4bb9-9ddb-f49797416a88",
+          "object_type": "TABLE",
+          "fully_qualified_name": "silver_order_enriched",
+          "name": "silver_order_enriched",
+          "description": "",
+          "url": "silver_order_enriched"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_3f57fec5",
+        "name": "returns_raw → silver_order_enriched",
+        "description": "Confidence: 95%. Evidence: parsed from 03_dlt_net_revenue_pipeline.py via ast. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "b355d154-c7dd-4840-a0c3-0b2f83ab6ccb",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.returns_raw",
+          "name": "returns_raw",
+          "description": "",
+          "url": "harborline.bronze.returns_raw"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "97fba0d3-6ad6-4bb9-9ddb-f49797416a88",
+          "object_type": "TABLE",
+          "fully_qualified_name": "silver_order_enriched",
+          "name": "silver_order_enriched",
+          "description": "",
+          "url": "silver_order_enriched"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_4444cccc",
+        "name": "silver_order_enriched → gold_net_revenue_by_segment",
+        "description": "Confidence: 95%. Evidence: parsed from 03_dlt_net_revenue_pipeline.py via ast. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "97fba0d3-6ad6-4bb9-9ddb-f49797416a88",
+          "object_type": "TABLE",
+          "fully_qualified_name": "silver_order_enriched",
+          "name": "silver_order_enriched",
+          "description": "",
+          "url": "silver_order_enriched"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "ec729fb7-b863-4621-abe3-f4b70e85a39c",
+          "object_type": "TABLE",
+          "fully_qualified_name": "gold_net_revenue_by_segment",
+          "name": "gold_net_revenue_by_segment",
+          "description": "",
+          "url": "gold_net_revenue_by_segment"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_3f909ede",
+        "name": "orders → daily_sales_summary",
+        "description": "Confidence: 95%. Evidence: parsed from 04_legacy_sales_summary.sql via sqlglot. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "61253269-0d1b-4f53-a541-2d563bc9955e",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.orders",
+          "name": "orders",
+          "description": "dbo.orders",
+          "url": "dbo.orders"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "33727812-f71f-490f-a529-a77b91d08edb",
+          "object_type": "TABLE",
+          "fully_qualified_name": "reporting.daily_sales_summary",
+          "name": "daily_sales_summary",
+          "description": "",
+          "url": "reporting.daily_sales_summary"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "o.order_date",
+          "target_column": "order_date",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "c.segment",
+          "target_column": "customer_segment",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "o.gross_amount",
+          "target_column": "net_revenue",
+          "transformation": "SUM(o.gross_amount - o.discount_amount)",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "o.discount_amount",
+          "target_column": "net_revenue",
+          "transformation": "SUM(o.gross_amount - o.discount_amount)",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_14e2400f",
+        "name": "customers → daily_sales_summary",
+        "description": "Confidence: 95%. Evidence: parsed from 04_legacy_sales_summary.sql via sqlglot. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "5501606d-97a4-4762-a146-ade7eaa52741",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.customers",
+          "name": "customers",
+          "description": "dbo.customers",
+          "url": "dbo.customers"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "33727812-f71f-490f-a529-a77b91d08edb",
+          "object_type": "TABLE",
+          "fully_qualified_name": "reporting.daily_sales_summary",
+          "name": "daily_sales_summary",
+          "description": "",
+          "url": "reporting.daily_sales_summary"
+        }
+      ],
+      "column_mappings": [
+        {
+          "source_column": "o.order_date",
+          "target_column": "order_date",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "c.segment",
+          "target_column": "customer_segment",
+          "transformation": "",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "o.gross_amount",
+          "target_column": "net_revenue",
+          "transformation": "SUM(o.gross_amount - o.discount_amount)",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        },
+        {
+          "source_column": "o.discount_amount",
+          "target_column": "net_revenue",
+          "transformation": "SUM(o.gross_amount - o.discount_amount)",
+          "confidence": 0.9,
+          "confidence_level": "high",
+          "evidence": "parsed from 04_legacy_sales_summary.sql via sqlglot",
+          "sme_approved_by": "priya.nair@harborline.example"
+        }
+      ]
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_4ec3725a",
+        "name": "pos_export_orders → orders",
+        "description": "Confidence: 95%. Evidence: parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "c6e46961-26c6-4c7c-a9d3-64fb1db28b65",
+          "object_type": "SCHEMA",
+          "fully_qualified_name": "adf://pos_export_orders",
+          "name": "pos_export_orders",
+          "description": "pos-export/orders",
+          "url": "adf://pos_export_orders"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "61253269-0d1b-4f53-a541-2d563bc9955e",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.orders",
+          "name": "orders",
+          "description": "dbo.orders",
+          "url": "dbo.orders"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_7f23de0f",
+        "name": "pos_export_customers → customers",
+        "description": "Confidence: 95%. Evidence: parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "550eb3f2-9a59-4c9b-b034-6b5fb9b99b58",
+          "object_type": "SCHEMA",
+          "fully_qualified_name": "adf://pos_export_customers",
+          "name": "pos_export_customers",
+          "description": "pos-export/customers",
+          "url": "adf://pos_export_customers"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "5501606d-97a4-4762-a146-ade7eaa52741",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.customers",
+          "name": "customers",
+          "description": "dbo.customers",
+          "url": "dbo.customers"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_317fbff1",
+        "name": "orders → orders_raw",
+        "description": "Confidence: 95%. Evidence: parsed from 10_adf_pl_ingest_sales_daily.json via ADF pipeline JSON. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "61253269-0d1b-4f53-a541-2d563bc9955e",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.orders",
+          "name": "orders",
+          "description": "dbo.orders",
+          "url": "dbo.orders"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "f066e51e-0f04-4372-a014-065bf08db945",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.orders_raw",
+          "name": "orders_raw",
+          "description": "harborline.bronze.orders_raw",
+          "url": "harborline.bronze.orders_raw"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_c0223e46",
+        "name": "customers → customers_raw",
+        "description": "Confidence: 95%. Evidence: SME-provided: marcus.oyelaran@harborline.example. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "5501606d-97a4-4762-a146-ade7eaa52741",
+          "object_type": "TABLE",
+          "fully_qualified_name": "dbo.customers",
+          "name": "customers",
+          "description": "dbo.customers",
+          "url": "dbo.customers"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "1b049441-8e43-41f5-a255-1cca23070e14",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.customers_raw",
+          "name": "customers_raw",
+          "description": "",
+          "url": "harborline.bronze.customers_raw"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_bb7a7a89",
+        "name": "returns → returns_raw",
+        "description": "Confidence: 95%. Evidence: SME-provided: marcus.oyelaran@harborline.example. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "58a080af-0e84-4b44-8192-85726bd776ca",
+          "object_type": "SCHEMA",
+          "fully_qualified_name": "abfss://landing@harborlake.dfs.core.windows.net/returns",
+          "name": "returns",
+          "description": "",
+          "url": "abfss://landing@harborlake.dfs.core.windows.net/returns"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "b355d154-c7dd-4840-a0c3-0b2f83ab6ccb",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.bronze.returns_raw",
+          "name": "returns_raw",
+          "description": "",
+          "url": "harborline.bronze.returns_raw"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_41fdcbb7",
+        "name": "gl_adjustments → revenue_adjustments",
+        "description": "Confidence: 95%. Evidence: SME-provided: marcus.oyelaran@harborline.example. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "2bef774a-7065-4f98-8531-2e9d7d525295",
+          "object_type": "SCHEMA",
+          "fully_qualified_name": "abfss://finance@harborlake.dfs.core.windows.net/gl_adjustments",
+          "name": "gl_adjustments",
+          "description": "",
+          "url": "abfss://finance@harborlake.dfs.core.windows.net/gl_adjustments"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "d3b2611a-6f4b-40c6-8c4e-648bc3103ad8",
+          "object_type": "TABLE",
+          "fully_qualified_name": "harborline.finance.revenue_adjustments",
+          "name": "revenue_adjustments",
+          "description": "",
+          "url": "harborline.finance.revenue_adjustments"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_8b338f49",
+        "name": "gold_net_revenue_by_segment → Executive Net Revenue",
+        "description": "Confidence: 95%. Evidence: SME-provided: marcus.oyelaran@harborline.example. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "ec729fb7-b863-4621-abe3-f4b70e85a39c",
+          "object_type": "TABLE",
+          "fully_qualified_name": "gold_net_revenue_by_segment",
+          "name": "gold_net_revenue_by_segment",
+          "description": "",
+          "url": "gold_net_revenue_by_segment"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "6cc2e82b-0a9d-4b70-99a0-ee556b97b1ff",
+          "object_type": "REPORT",
+          "fully_qualified_name": "Executive Net Revenue",
+          "name": "Executive Net Revenue",
+          "description": "",
+          "url": "Executive Net Revenue"
+        }
+      ],
+      "column_mappings": []
+    },
+    {
+      "dataflow": {
+        "external_id": "lineage_agent_9b02e81b-3542-4716-b2c0-7876ec211fd2_890514a8",
+        "name": "daily_sales_summary → Monthly Revenue Pack",
+        "description": "Confidence: 95%. Evidence: SME-provided: marcus.oyelaran@harborline.example. Run: 9b02e81b-3542-4716-b2c0-7876ec211fd2. SME-approved by: priya.nair@harborline.example",
+        "url": "/Lineage Agent"
+      },
+      "source_objects": [
+        {
+          "external_id": "33727812-f71f-490f-a529-a77b91d08edb",
+          "object_type": "TABLE",
+          "fully_qualified_name": "reporting.daily_sales_summary",
+          "name": "daily_sales_summary",
+          "description": "",
+          "url": "reporting.daily_sales_summary"
+        }
+      ],
+      "target_objects": [
+        {
+          "external_id": "9b619569-e89d-41f7-ae8f-8dc1ab6714b0",
+          "object_type": "REPORT",
+          "fully_qualified_name": "Monthly Revenue Pack",
+          "name": "Monthly Revenue Pack",
+          "description": "",
+          "url": "Monthly Revenue Pack"
+        }
+      ],
+      "column_mappings": []
+    }
+  ]
+}

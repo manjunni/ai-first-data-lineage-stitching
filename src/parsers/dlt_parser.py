@@ -3,7 +3,6 @@ import ast
 import json
 import re
 
-from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.parsers.base_parser import BaseParser
@@ -18,7 +17,8 @@ from src.graph.models import (
     LineageFragment, LineageNode, LineageEdge,
     SystemType, ConfidenceLevel,
 )
-from config.settings import settings
+from src.llm_client import create_chat_model
+from src.llm_usage import make_usage_event
 
 # Marker schema injected during SQL DLT preprocessing so sqlglot can parse
 # LIVE.table references — detected post-parse to assign SystemType.DLT
@@ -308,21 +308,26 @@ If you find nothing, return {"relationships": []}."""
 def _parse_with_llm_dlt(content: str, filename: str) -> LineageFragment:
     fragment = LineageFragment(artifact_name=filename, artifact_type="dlt")
     node_registry: dict[str, LineageNode] = {}
+    response = None
+    llm_called = False
 
     try:
-        llm = AzureChatOpenAI(
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-            azure_deployment=settings.azure_openai_deployment,
-            api_version="2024-08-01-preview",
-        )
+        llm = create_chat_model()
+        llm_called = True
         response = llm.invoke([
             SystemMessage(content=_DLT_FALLBACK_PROMPT),
             HumanMessage(content=f"DLT pipeline: {filename}\n\n{content}"),
         ])
         data = json.loads(response.content)
     except Exception:
+        fragment.raw_metadata["usage_event"] = make_usage_event(
+            "parse", "llm", "failed", response=response, llm_called=llm_called,
+            artifact=filename,
+        )
         return fragment
+    fragment.raw_metadata["usage_event"] = make_usage_event(
+        "parse", "llm", "success", response=response, llm_called=True, artifact=filename,
+    )
 
     for rel in data.get("relationships", []):
         src_info = _normalise_llm_node(rel.get("source", {}))
